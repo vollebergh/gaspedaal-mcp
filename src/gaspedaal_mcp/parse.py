@@ -1,8 +1,8 @@
 """Flight-payload -> dicts. Pure functies, geen netwerk.
 
 De site (Next.js App Router) levert data in inline scripts
-``self.__next_f.push([1,"<JSON-string-fragment>"])``. Dit moduul extraheert en
-decodert die fragmenten en haalt er de relevante sleutels uit.
+``self.__next_f.push([1,"<JSON-string-fragment>"])``. Deze module decodeert die
+fragmenten en haalt er de relevante sleutels uit.
 """
 
 from __future__ import annotations
@@ -11,33 +11,30 @@ import json
 import re
 from typing import Any
 
+from .params import PARAM_NAMES
+
 _PUSH_RE = re.compile(r'self\.__next_f\.push\(\[1,"(.*?)"\]\)</script>', re.DOTALL)
+_COUNT_RE = re.compile(r"\(([\d.]+)\)")
 _DECODER = json.JSONDecoder()
 
-_FORMAT_ERROR = "Unexpected response format from Gaspedaal"
+FORMAT_ERROR = "Unexpected response format from Gaspedaal"
 
-_KEYS = {
-    "props": "commonPortalURLProps",
-    "pages": "numberOfPages",
-    "occasions": "occasions",
-    "facets": "dynamicFieldValues",
-    "filters": "filters",
+# Bereik- en keuzefilters in `filters` -> toolsleutel.
+_STEP_KEYS = {
+    "bouwjaar": "year",
+    "prijs": "price",
+    "kilometerstand": "mileage",
+    "vermogen": "power",
+    "aantalZitplaatsenRange": "seats",
+    "trekgewicht": "towing_weight",
+    "ledigGewicht": "empty_weight",
+    "motorinhoud": "engine_cc",
+    "locatie": "radius_km",
+    "aanbodSinds": "days_listed",
 }
 
-# Bereikfilter-sleutel in de site -> (toolsleutel, min-label, max-label).
-_RANGE_SITE_KEYS = [
-    ("bouwjaar", "year"),
-    ("prijs", "price"),
-    ("kilometerstand", "mileage"),
-    ("vermogen", "power"),
-    ("aantalZitplaatsenRange", "seats"),
-    ("trekgewicht", "towing_weight"),
-    ("ledigGewicht", "empty_weight"),
-    ("motorinhoud", "engine_cc"),
-]
-
-# enum-filter-sleutel in dynamicFieldValues -> toolsleutel.
-_ENUM_FACET_KEYS = {
+# Enum-filters in `dynamicFieldValues` -> toolsleutel.
+_ENUM_KEYS = {
     "brandstofsoort": "fuel",
     "transmissietype": "transmission",
     "carrosserievorm": "body",
@@ -48,45 +45,13 @@ _ENUM_FACET_KEYS = {
     "kilometerstandCorrect": "nap",
 }
 
-# toolsleutel -> site-queryparam (voor de "param"-veldjes in list_filters).
-_PARAM_NAMES = {
-    "fuel": "brnst",
-    "transmission": "trns",
-    "body": "crs",
-    "color": "klr",
-    "doors": "drn",
-    "seller": "vrk",
-    "warranty": "grn",
-    "nap": "nap",
-    "year": "bmin/bmax",
-    "price": "pmin/pmax",
-    "mileage": "kmin/kmax",
-    "power": "vmin/vmax",
-    "seats": "zmin/zmax",
-    "towing_weight": "tmin/tmax",
-    "empty_weight": "gmin/gmax",
-    "engine_cc": "cmin/cmax",
-    "radius_km": "strl",
-    "days_listed": "dagen",
-}
-
-
-def _unescape_fragment(frag: str) -> str:
-    return json.loads('"' + frag + '"')
-
 
 def _sanitize(value: Any) -> Any:
-    """RSC-waarden normaliseren (zie SPEC §5): ``$undefined`` en ``$``-refs → None,
-    ``$$`` → ``$``. Recursief op dict/list.
-    """
+    """RSC-waarden normaliseren (SPEC §5): ``$undefined`` en ``$``-refs → None, ``$$`` → ``$``."""
     if isinstance(value, str):
-        if value == "$undefined":
-            return None
-        if value.startswith("$"):
-            if value.startswith("$$"):
-                return value[1:]
-            return None
-        return value
+        if value.startswith("$$"):
+            return value[1:]
+        return None if value.startswith("$") else value
     if isinstance(value, list):
         return [_sanitize(v) for v in value]
     if isinstance(value, dict):
@@ -95,188 +60,102 @@ def _sanitize(value: Any) -> Any:
 
 
 def extract_flight_text(html: str) -> str:
-    """Extraheert en decodeert alle flight-fragmenten tot één tekstblok."""
-    parts: list[str] = []
-    for frag in _PUSH_RE.findall(html):
-        parts.append(_unescape_fragment(frag))
-    return "".join(parts)
+    """Decodeert alle flight-fragmenten en plakt ze aan elkaar."""
+    return "".join(json.loads(f'"{frag}"') for frag in _PUSH_RE.findall(html))
 
 
-def _find_value(text: str, key: str) -> tuple[Any, int] | None:
-    """Zoekt het eerste voorval van ``"key":`` als *sleutel* en decodeert de waarde.
-
-    Een voorkomen waarop geen `:` volgt (dus een waarde in plaats van een
-    sleutel) wordt overgeslagen. Decodeert niet (of geeft ``None``) in plaats
-    van een rauwe ``JSONDecodeError``.
-    """
-    needle = '"' + key + '"'
-    start = 0
-    while True:
-        idx = text.find(needle, start)
-        if idx == -1:
-            return None
-        colon = idx + len(needle)
-        if colon < len(text) and text[colon] == ":":
-            valstart = colon + 1
-            while valstart < len(text) and text[valstart] in " \t\r\n":
-                valstart += 1
-            try:
-                value, end = _DECODER.raw_decode(text, valstart)
-            except (json.JSONDecodeError, ValueError):
-                return None
-            return value, end
-        start = idx + 1
-
-
-def _get_facet_counts(facets: Any) -> dict[str, Any]:
-    return facets if isinstance(facets, dict) else {}
-
-
-class PageData:
-    """Geparste zoekpagina."""
-
-    def __init__(self, html: str) -> None:
-        text = extract_flight_text(html)
-        props = _find_value(text, _KEYS["props"])
-        occasions = _find_value(text, _KEYS["occasions"])
-        if props is None or occasions is None:
-            raise ValueError(_FORMAT_ERROR)
-        self.props_raw = _sanitize(props[0])
-        self.occasions_raw = _sanitize(occasions[0])
-
-        pages = _find_value(text, _KEYS["pages"])
-        self.pages = _sanitize(pages[0]) if pages is not None else None
-
-        facets = _find_value(text, _KEYS["facets"])
-        self.facets_raw = _sanitize(facets[0]) if facets is not None else None
-
-        filters = _find_value(text, _KEYS["filters"])
-        self.filters_raw = _sanitize(filters[0]) if filters is not None else None
-
-    @property
-    def total(self) -> int | None:
-        return self.props_raw.get("totalOccasions") if isinstance(self.props_raw, dict) else None
-
-    @property
-    def sort(self) -> str | None:
-        return self.props_raw.get("sort") if isinstance(self.props_raw, dict) else None
-
-    @property
-    def page_number(self) -> int | None:
-        return self.props_raw.get("pageNumber") if isinstance(self.props_raw, dict) else None
-
-
-def _int_count_from_label(label: Any) -> int | None:
-    """``"Toyota (16.724)"`` → 16724 (punt is duizendtalscheiding)."""
-    if not isinstance(label, str):
+def _find_value(text: str, key: str) -> Any:
+    """Decodeert de waarde bij het eerste ``"key":``; ``None`` als die ontbreekt of kapot is."""
+    needle = f'"{key}":'
+    idx = text.find(needle)
+    if idx == -1:
         return None
-    m = re.search(r"\(([\d.]+)\)", label)
-    if not m:
-        return None
-    digits = m.group(1).replace(".", "")
+    start = idx + len(needle)
+    while text[start : start + 1].isspace():
+        start += 1
     try:
-        return int(digits)
+        return _sanitize(_DECODER.raw_decode(text, start)[0])
     except ValueError:
         return None
 
 
+class PageData:
+    """Geparste zoekpagina: de ruwe (gesanitiseerde) blokken uit de flight-payload."""
+
+    def __init__(self, html: str) -> None:
+        text = extract_flight_text(html)
+        props = _find_value(text, "commonPortalURLProps")
+        occasions = _find_value(text, "occasions")
+        if not isinstance(props, dict) or not isinstance(occasions, list):
+            raise ValueError(FORMAT_ERROR)
+        self.props: dict[str, Any] = props
+        self.occasions: list[Any] = occasions
+        self.pages = _find_value(text, "numberOfPages")
+        self.facets: dict[str, Any] = _dict(_find_value(text, "dynamicFieldValues"))
+        self.filters: dict[str, Any] = _dict(_find_value(text, "filters"))
+
+    def facet(self, key: str) -> list[dict[str, Any]]:
+        """Items van een facet, zonder groepskoppen."""
+        items = self.facets.get(key)
+        if not isinstance(items, list):
+            return []
+        return [i for i in items if isinstance(i, dict) and not i.get("isGroupHeader")]
+
+
+def _dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _count(item: dict[str, Any] | None) -> int | None:
+    """``count`` van een facet-item, of het getal uit ``label`` (``"Toyota (16.724)"`` → 16724)."""
+    if not item:
+        return None
+    if isinstance(item.get("count"), int):
+        return item["count"]
+    m = _COUNT_RE.search(item.get("label") or "")
+    return int(m.group(1).replace(".", "")) if m else None
+
+
+def _slug_list(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {"slug": i.get("slug"), "name": i.get("name") or i.get("value"), "count": _count(i)} for i in items
+    ]
+
+
 def list_brands_from_page(html: str) -> list[dict[str, Any]]:
-    page = PageData(html)
-    facets = page.facets_raw or {}
-    merken = facets.get("merken", [])
-    result: list[dict[str, Any]] = []
-    for item in merken:
-        if not isinstance(item, dict) or item.get("isGroupHeader"):
-            continue
-        result.append(
-            {
-                "slug": item.get("slug"),
-                "name": item.get("name") or item.get("value"),
-                "count": _int_count_from_label(item.get("label")),
-            }
-        )
-    result.sort(key=lambda x: (x.get("name") or "").lower())
-    return result
+    brands = _slug_list(PageData(html).facet("merken"))
+    return sorted(brands, key=lambda b: (b["name"] or "").lower())
 
 
 def list_models_from_page(html: str) -> list[dict[str, Any]]:
-    page = PageData(html)
-    facets = page.facets_raw or {}
-    modellen = facets.get("modellen", [])
-    result: list[dict[str, Any]] = []
-    for item in modellen:
-        if not isinstance(item, dict) or item.get("isGroupHeader"):
-            continue
-        count = _int_count_from_label(item.get("label"))
-        if count is not None and count <= 0:
-            continue
-        result.append(
-            {
-                "slug": item.get("slug"),
-                "name": item.get("name") or item.get("value"),
-                "count": count,
-            }
-        )
-    return result
+    return [m for m in _slug_list(PageData(html).facet("modellen")) if m["count"] != 0]
 
 
-def _facet_entries(facets: dict[str, Any], site_key: str) -> list[dict[str, Any]]:
-    items = facets.get(site_key, [])
-    if not isinstance(items, list):
-        return []
-    return [i for i in items if isinstance(i, dict) and not i.get("isGroupHeader")]
-
-
-def _get_path(d: dict[str, Any], path: str, default: Any = None) -> Any:
-    cur: Any = d
+def _get(d: Any, path: str) -> Any:
     for part in path.split("."):
-        if not isinstance(cur, dict) or part not in cur:
-            return default
-        cur = cur[part]
-    return cur
+        if not isinstance(d, dict):
+            return None
+        d = d.get(part)
+    return d
 
 
 def _normalize_listing(occ: Any) -> dict[str, Any]:
     if not isinstance(occ, dict):
         return {}
-    alg = _get_path(occ, "autogegevens.algemeen", {}) or {}
-    hist = _get_path(occ, "autogegevens.geschiedenis", {}) or {}
-    motor = _get_path(occ, "autogegevens.motor", {}) or {}
-    aanbieder = _get_path(occ, "aanbieder.aanbiedergegevens", {}) or {}
+    alg = _dict(_get(occ, "autogegevens.algemeen"))
+    hist = _dict(_get(occ, "autogegevens.geschiedenis"))
+    motor = _dict(_get(occ, "autogegevens.motor"))
+    seller = _dict(_get(occ, "aanbieder.aanbiedergegevens"))
 
     version = alg.get("uitvoering")
-    if isinstance(version, str):
-        version = version[:200]
-
     power_kw = motor.get("vermogenKw")
-    power_hp = round(power_kw * 1.35962) if isinstance(power_kw, (int, float)) else None
-
-    plaats = aanbieder.get("plaatsnaam")
-    provincie = aanbieder.get("provincieHulpwaarde")
-    location = None
-    if plaats:
-        location = plaats
-        if provincie:
-            location = f"{plaats} ({provincie})"
-
-    offers = []
-    for portal in occ.get("portalen") or []:
-        if not isinstance(portal, dict):
-            continue
-        offers.append(
-            {
-                "site": portal.get("portaalBeschrijving"),
-                "type": portal.get("portaalType"),
-                "url": portal.get("klikUrl"),
-            }
-        )
-
-    listing: dict[str, Any] = {
+    place, province = seller.get("plaatsnaam"), seller.get("provincieHulpwaarde")
+    return {
         "id": occ.get("advertentieId"),
         "listed_at": occ.get("datumGeplaatst"),
         "brand": alg.get("merknaam"),
         "model": alg.get("modelnaam"),
-        "version": version,
+        "version": version[:200] if isinstance(version, str) else version,
         "fuel": alg.get("brandstofsoort"),
         "transmission": alg.get("transmissietype"),
         "body": alg.get("carrosserievorm"),
@@ -286,102 +165,64 @@ def _normalize_listing(occ: Any) -> dict[str, Any]:
         "mileage_km": hist.get("kilometerstand"),
         "engine_cc": motor.get("motorinhoud"),
         "power_kw": power_kw,
-        "power_hp": power_hp,
-        "price_eur": _get_path(occ, "prijs.totaalInclusiefBtw"),
-        "location": location,
-        "seller_name": aanbieder.get("naamsvermelding") or None,
-        "offers": offers,
-        "photo_url": _get_path(occ, "gpFotos.fotoKlein"),
+        "power_hp": round(power_kw * 1.35962) if isinstance(power_kw, (int, float)) else None,
+        "price_eur": _get(occ, "prijs.totaalInclusiefBtw"),
+        "location": (f"{place} ({province})" if province else place) if place else None,
+        "seller_name": seller.get("naamsvermelding") or None,
+        "offers": [
+            {"site": p.get("portaalBeschrijving"), "type": p.get("portaalType"), "url": p.get("klikUrl")}
+            for p in occ.get("portalen") or []
+            if isinstance(p, dict)
+        ],
+        "photo_url": _get(occ, "gpFotos.fotoKlein"),
     }
-    return listing
-
-
-def parse_listings(html: str) -> list[dict[str, Any]]:
-    page = PageData(html)
-    occasions = page.occasions_raw
-    if not isinstance(occasions, list):
-        return []
-    return [_normalize_listing(occ) for occ in occasions]
 
 
 def parse_all(html: str) -> dict[str, Any]:
-    """Parseert de hele zoekpagina naar ``{total, page, pages, sort, listings, facets}``."""
+    """Zoekpagina → ``{total, page, pages, sort, listings}``."""
     page = PageData(html)
-    listings = (
-        [_normalize_listing(o) for o in page.occasions_raw or []]
-        if isinstance(page.occasions_raw, list)
-        else []
-    )
     return {
-        "total": page.total,
-        "page": page.page_number,
+        "total": page.props.get("totalOccasions"),
+        "page": page.props.get("pageNumber"),
         "pages": page.pages,
-        "sort": page.sort,
-        "listings": listings,
-        "facets": {"dynamicFieldValues": page.facets_raw, "filters": page.filters_raw},
+        "sort": page.props.get("sort"),
+        "listings": [_normalize_listing(o) for o in page.occasions],
     }
 
 
 def parse_list_filters(html: str) -> dict[str, Any]:
-    """Bouwt de ``list_filters``-uitvoer op uit de pagina (zie SPEC §8.3).
+    """Uitvoer van ``list_filters`` (SPEC §8.3), zonder ``sort_options`` (voegt de server toe).
 
-    Enum-filters: ``{tool_key: {"param", "values":[{value, label, count}]}}``.
-    Bereikfilters: ``{tool_key: {"param", "steps":[…]}}``.
-    Plus ``options`` (id/name/group/count), ``radius_km``, ``days_listed`` en
-    ``sort_options`` (wordt door de server toegevoegd).
+    Enums: ``{param, values:[{value, label, count}]}``; stappen: ``{param, steps}``;
+    ``options``: ``[{id, name, group, count}]``.
     """
     page = PageData(html)
-    facets = page.facets_raw or {}
-    filters = page.filters_raw or {}
     result: dict[str, Any] = {}
 
-    for site_key, tool_key in _ENUM_FACET_KEYS.items():
-        entries = _facet_entries(facets, site_key)
-        if not entries:
-            continue
-        values = []
-        for item in entries:
-            values.append(
-                {
-                    "value": item.get("value"),
-                    "label": item.get("label") or item.get("name"),
-                    "count": item.get("count") or _int_count_from_label(item.get("label")),
-                }
-            )
-        result[tool_key] = {"param": _PARAM_NAMES[tool_key], "values": values}
+    for site_key, key in _ENUM_KEYS.items():
+        values = [
+            {"value": i.get("value"), "label": i.get("label") or i.get("name"), "count": _count(i)}
+            for i in page.facet(site_key)
+        ]
+        if values:
+            result[key] = {"param": PARAM_NAMES[key], "values": values}
 
-    # opties: id uit `filters.zoekopties` (`id`), count uit `dynamicFieldValues.opties`.
-    opt_counts = {o.get("value"): o for o in _facet_entries(facets, "opties")}
-    options = []
-    for item in filters.get("zoekopties") or []:
-        if not isinstance(item, dict):
-            continue
-        opt_id = item.get("id")
-        if opt_id is None:
-            opt_id = item.get("value")
-        opt = opt_counts.get(opt_id) if opt_id is not None else None
-        count = (opt.get("count") if opt else None) or _int_count_from_label((opt or {}).get("label"))
-        options.append(
-            {
-                "id": opt_id,
-                "name": item.get("name"),
-                "group": item.get("group") or item.get("attribute"),
-                "count": count,
-            }
-        )
+    counts = {o.get("value"): o for o in page.facet("opties")}
+    options = [
+        {
+            "id": (oid := i.get("id", i.get("value"))),
+            "name": i.get("name"),
+            "group": i.get("group") or i.get("attribute"),
+            "count": _count(counts.get(oid)),
+        }
+        for i in page.filters.get("zoekopties") or []
+        if isinstance(i, dict)
+    ]
     if options:
         result["options"] = options
 
-    # bereikfilters
-    for site_key, tool_key in _RANGE_SITE_KEYS:
-        steps = filters.get(site_key)
-        if steps is not None:
-            result[tool_key] = {"param": _PARAM_NAMES[tool_key], "steps": steps}
-
-    # radius_km en days_listed: vaste waardenlijsten
-    for site_key, tool_key in (("locatie", "radius_km"), ("aanbodSinds", "days_listed")):
-        steps = filters.get(site_key)
-        if steps is not None:
-            result[tool_key] = {"param": _PARAM_NAMES[tool_key], "steps": steps}
+    for site_key, key in _STEP_KEYS.items():
+        if page.filters.get(site_key) is not None:
+            result[key] = {"param": PARAM_NAMES[key], "steps": page.filters[site_key]}
 
     return result

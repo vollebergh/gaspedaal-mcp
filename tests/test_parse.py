@@ -156,8 +156,7 @@ def test_list_filters_has_param_field():
 def test_find_value_skips_key_as_value():
     # "occasions" als *waarde* moet niet als sleutel worden aangemerkt
     text = '{"foo": "occasions", "occasions": [{"advertentieId": 7}]}'
-    value, _ = parse._find_value(text, "occasions")
-    assert value == [{"advertentieId": 7}]
+    assert parse._find_value(text, "occasions") == [{"advertentieId": 7}]
 
 
 def test_find_value_decode_error_returns_none():

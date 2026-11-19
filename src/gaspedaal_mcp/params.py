@@ -10,71 +10,57 @@ import httpx
 
 BASE_URL = "https://www.gaspedaal.nl"
 
-SLUG_RE = r"^[a-z0-9]+(?:-[a-z0-9]+)*$"
+_SLUG_RE = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
+_POSTCODE_RE = re.compile(r"\d{4}(?:[A-Z]{2})?")
 
-# filter-toolsleutel -> (param voor min, param voor max, of None voor lijst/enum)
-_RANGE_FILTERS: dict[str, tuple[str, str]] = {
-    "year": ("bmin", "bmax"),
-    "price": ("pmin", "pmax"),
-    "mileage": ("kmin", "kmax"),
-    "power": ("vmin", "vmax"),
-    "seats": ("zmin", "zmax"),
-    "towing_weight": ("tmin", "tmax"),
-    "empty_weight": ("gmin", "gmax"),
-    "engine_cc": ("cmin", "cmax"),
+# Bereikfilters: toolsleutel -> (min-param, max-param, ondergrens, bovengrens of None).
+# De bovengrens van `year` is dynamisch (huidig jaar + 1).
+_RANGES: dict[str, tuple[str, str, int, int | None]] = {
+    "year": ("bmin", "bmax", 1900, None),
+    "price": ("pmin", "pmax", 0, None),
+    "mileage": ("kmin", "kmax", 0, None),
+    "power": ("vmin", "vmax", 0, None),
+    "seats": ("zmin", "zmax", 1, 9),
+    "towing_weight": ("tmin", "tmax", 0, None),
+    "empty_weight": ("gmin", "gmax", 0, None),
+    "engine_cc": ("cmin", "cmax", 0, None),
 }
 
-# filter-toolsleutel -> (param, toegestane waarden of None)
-_LIST_FILTERS: dict[str, tuple[str, list[str] | None]] = {
-    "fuel": ("brnst", ["BENZINE", "DIESEL", "HYBRIDE", "ELEKTRICITEIT", "LPG", "AARDGAS", "WATERSTOF"]),
+# Enum-filters: toolsleutel -> (param, toegestane waarden, meerdere waarden toegestaan).
+_ENUMS: dict[str, tuple[str, list[str], bool]] = {
+    "fuel": ("brnst", "BENZINE DIESEL HYBRIDE ELEKTRICITEIT LPG AARDGAS WATERSTOF".split(), True),
+    "transmission": ("trns", ["AUTOMATISCH", "HANDGESCHAKELD"], False),
     "body": (
         "crs",
-        [
-            "HATCHBACK",
-            "STATIONWAGEN",
-            "MPV",
-            "SEDAN",
-            "SUV",
-            "PICK_UP",
-            "COUPE",
-            "CABRIOLET",
-            "BEDRIJFSWAGEN",
-            "CAMPER",
-        ],
+        "HATCHBACK STATIONWAGEN MPV SEDAN SUV PICK_UP COUPE CABRIOLET BEDRIJFSWAGEN CAMPER".split(),
+        True,
     ),
     "color": (
         "klr",
-        [
-            "BEIGE",
-            "BLAUW",
-            "BRUIN",
-            "GEEL",
-            "GOUD",
-            "GRIJS",
-            "GROEN",
-            "ORANJE",
-            "PAARS",
-            "ROOD",
-            "WIT",
-            "ZILVER",
-            "ZWART",
-        ],
+        "BEIGE BLAUW BRUIN GEEL GOUD GRIJS GROEN ORANJE PAARS ROOD WIT ZILVER ZWART".split(),
+        True,
     ),
-    "warranty": ("grn", ["BOVAG", "MERKGARANTIE"]),
+    "seller": ("vrk", ["UNIVERSEEL_AUTOBEDRIJF", "PARTICULIER"], False),
+    "warranty": ("grn", ["BOVAG", "MERKGARANTIE"], True),
 }
 
-# filter-toolsleutel -> (param, toegestane waarden of None) voor één-waarde-filters.
-_SINGLE_FILTERS: dict[str, tuple[str, list[str] | None]] = {
-    "transmission": ("trns", ["AUTOMATISCH", "HANDGESCHAKELD"]),
-    "seller": ("vrk", ["UNIVERSEEL_AUTOBEDRIJF", "PARTICULIER"]),
+# Filters met een vaste set getallen: toolsleutel -> (param, toegestane waarden).
+_CHOICES: dict[str, tuple[str, list[int]]] = {
+    "days_listed": ("dagen", [1, 3, 5, 7, 14, 21, 28]),
+    "radius_km": ("strl", [5, 10, 20, 30, 40, 50, 75, 100, 150, 200]),
 }
 
-_OPTION_FILTERS: dict[str, str] = {
+_OTHER_KEYS = {"doors", "options", "nap", "postcode"}
+_ALL_FILTER_KEYS = set(_RANGES) | set(_ENUMS) | set(_CHOICES) | _OTHER_KEYS
+
+# Toolsleutel -> site-param, voor de `param`-velden van list_filters.
+PARAM_NAMES: dict[str, str] = {
+    **{k: f"{lo}/{hi}" for k, (lo, hi, _, _) in _RANGES.items()},
+    **{k: v[0] for k, v in _ENUMS.items()},
+    **{k: v[0] for k, v in _CHOICES.items()},
     "doors": "drn",
+    "nap": "nap",
 }
-
-_RADIUS_ALLOWED = {5, 10, 20, 30, 40, 50, 75, 100, 150, 200}
-_DAYS_ALLOWED = {1, 3, 5, 7, 14, 21, 28}
 
 SORT_MAP = {
     "relevance": "df-a",
@@ -88,88 +74,23 @@ SORT_MAP = {
     "newest": "dt-d",
 }
 
-# Volgorde van de parameters in de query (zie SPEC §4, "Volgorde en codering").
-_PARAM_ORDER = [
-    "trefw",
-    "bmin",
-    "bmax",
-    "pmin",
-    "pmax",
-    "kmin",
-    "kmax",
-    "vmin",
-    "vmax",
-    "zmin",
-    "zmax",
-    "tmin",
-    "tmax",
-    "gmin",
-    "gmax",
-    "cmin",
-    "cmax",
-    "brnst",
-    "trns",
-    "crs",
-    "klr",
-    "drn",
-    "opt",
-    "vrk",
-    "grn",
-    "nap",
-    "dagen",
-    "pc",
-    "strl",
-    "srt",
-    "page",
-]
+# Volgorde van de parameters in de query (SPEC §4, "Volgorde en codering").
+_PARAM_ORDER = (
+    "trefw bmin bmax pmin pmax kmin kmax vmin vmax zmin zmax tmin tmax gmin gmax cmin cmax "
+    "brnst trns crs klr drn opt vrk grn nap dagen pc strl srt page"
+).split()
 
 
 class ValidationError(ValueError):
     """Korte foutmelding voor de gebruiker."""
 
 
-def _current_year() -> int:
-    return datetime.date.today().year
-
-
-def _validate_slug(slug: str, what: str) -> None:
-    if not re.fullmatch(SLUG_RE, slug):
-        raise ValidationError(f"invalid {what} slug '{slug}'; use list_brands / list_models")
-
-
-def _normalize_value(value: str, allowed: list[str] | None, key: str) -> str:
-    norm = value.strip().upper()
-    if allowed is not None and norm not in allowed:
-        raise ValidationError(f"Unknown value '{value}' for {key}; allowed: {', '.join(allowed)}")
-    return norm
-
-
 def _as_list(value: Any, key: str) -> list[str]:
-    if isinstance(value, str):
-        return [value]
-    if isinstance(value, int) and not isinstance(value, bool):
+    if isinstance(value, str) or (isinstance(value, int) and not isinstance(value, bool)):
         return [str(value)]
-    if isinstance(value, (list, tuple, set)):
+    if isinstance(value, (list, tuple)):
         return [str(v) for v in value]
     raise ValidationError(f"{key}: expected a string, an integer, or a list of them")
-
-
-def _as_range(value: Any, key: str) -> dict[str, int | None]:
-    if isinstance(value, dict):
-        if not (set(value.keys()) <= {"min", "max"}):
-            raise ValidationError(f"{key}: range accepts only 'min' and 'max'")
-        result: dict[str, int | None] = {}
-        for part in ("min", "max"):
-            if part in value:
-                if value[part] is None:
-                    result[part] = None
-                else:
-                    try:
-                        result[part] = int(value[part])
-                    except (TypeError, ValueError):
-                        raise ValidationError(f"{key}: {part} must be an integer") from None
-        return result
-    raise ValidationError(f"{key}: expected {{min, max}} object")
 
 
 def _as_int(value: Any, key: str) -> int:
@@ -181,11 +102,29 @@ def _as_int(value: Any, key: str) -> int:
         raise ValidationError(f"{key}: expected an integer") from None
 
 
-def validate_postcode(pc: str) -> str:
-    pc = pc.strip().upper().replace(" ", "")
-    if not re.fullmatch(r"^\d{4}([A-Z]{2})?$", pc):
-        raise ValidationError("postcode: expected 4 digits, optionally followed by 2 letters")
-    return pc
+def _int_list(value: Any, key: str, low: int, high: int | None) -> str:
+    """Lijst van gehele getallen binnen [low, high], als kommagescheiden string."""
+    ints = [_as_int(v, key) for v in _as_list(value, key)]
+    if any(n < low or (high is not None and n > high) for n in ints):
+        raise ValidationError(f"{key}: values must be {low}-{high}" if high else f"{key}: must be >= {low}")
+    return ",".join(map(str, ints))
+
+
+def _range(value: Any, key: str) -> tuple[int | None, int | None]:
+    if not isinstance(value, dict) or not set(value) <= {"min", "max"}:
+        raise ValidationError(f"{key}: expected an object with 'min' and/or 'max'")
+    low, high = (None if value.get(p) is None else _as_int(value[p], f"{key}.{p}") for p in ("min", "max"))
+    if low is not None and high is not None and low > high:
+        raise ValidationError(f"{key}: min > max")
+    _, _, floor, ceil = _RANGES[key]
+    if key == "year":
+        ceil = datetime.date.today().year + 1
+    for v in (low, high):
+        if v is not None and (v < floor or (ceil is not None and v > ceil)):
+            raise ValidationError(
+                f"{key}: must be between {floor} and {ceil}" if ceil else f"{key}: must be >= {floor}"
+            )
+    return low, high
 
 
 def build_url(
@@ -196,24 +135,20 @@ def build_url(
     sort: str,
     page: int,
 ) -> str:
-    """Bouw een gaspedaal.nl-zoek-URL op volgens SPEC §4.
-
-    Geeft een ``ValidationError`` bij ongeldige invoer.
-    """
+    """Bouw een gaspedaal.nl-zoek-URL op volgens SPEC §4; ``ValidationError`` bij ongeldige invoer."""
     filters = filters or {}
     if model is not None and brand is None:
         raise ValidationError("model requires brand")
-
-    for key in (brand, model):
-        if key is not None:
-            _validate_slug(key, "brand" if key == brand else "model")
-
+    for what, slug in (("brand", brand), ("model", model)):
+        if slug is not None and not _SLUG_RE.fullmatch(slug):
+            raise ValidationError(f"invalid {what} slug '{slug}'; use list_brands / list_models")
     if sort not in SORT_MAP:
-        allowed = ", ".join(SORT_MAP)
-        raise ValidationError(f"Unknown sort '{sort}'; allowed: {allowed}")
-
+        raise ValidationError(f"Unknown sort '{sort}'; allowed: {', '.join(SORT_MAP)}")
     if not 1 <= page <= 50:
         raise ValidationError("page must be between 1 and 50")
+    unknown = sorted(set(filters) - _ALL_FILTER_KEYS)
+    if unknown:
+        raise ValidationError(f"Unknown filter '{unknown[0]}'; call list_filters")
 
     params: dict[str, str] = {}
     if keyword is not None:
@@ -224,132 +159,55 @@ def build_url(
             raise ValidationError("keyword must be at most 100 characters")
         params["trefw"] = keyword
 
-    unknown = set(filters) - _ALL_FILTER_KEYS
-    if unknown:
-        name = sorted(unknown)[0]
-        raise ValidationError(f"Unknown filter '{name}'; call list_filters")
+    for key, (pmin, pmax, _, _) in _RANGES.items():
+        if key in filters:
+            low, high = _range(filters[key], key)
+            if low is not None:
+                params[pmin] = str(low)
+            if high is not None:
+                params[pmax] = str(high)
 
-    # bereikfilters
-    for key, (pmin, pmax) in _RANGE_FILTERS.items():
+    for key, (param, allowed, multi) in _ENUMS.items():
         if key not in filters:
             continue
-        rng = _as_range(filters[key], key)
-        low = rng.get("min")
-        high = rng.get("max")
-        if low is not None and high is not None and low > high:
-            raise ValidationError(f"{key}: min > max")
-        _validate_range_bounds(key, low, high)
-        if low is not None:
-            params[pmin] = str(low)
-        if high is not None:
-            params[pmax] = str(high)
-
-    # lijstfilters (brandstof, carrosserie, kleur, garantie, opties, deuren)
-    for key, (param, allowed) in _LIST_FILTERS.items():
-        if key not in filters:
-            continue
-        values = [_normalize_value(v, allowed, key) for v in _as_list(filters[key], key)]
+        values = [v.strip().upper() for v in _as_list(filters[key], key)]
+        if not multi and len(values) != 1:
+            raise ValidationError(f"{key}: takes a single value")
+        for v in values:
+            if v not in allowed:
+                raise ValidationError(f"Unknown value '{v}' for {key}; allowed: {', '.join(allowed)}")
         params[param] = ",".join(values)
 
-    for key, (param, allowed) in _SINGLE_FILTERS.items():
-        if key not in filters:
-            continue
-        values = _as_list(filters[key], key)
-        if len(values) != 1:
-            raise ValidationError(f"{key}: takes a single value")
-        params[param] = _normalize_value(values[0], allowed, key)
+    for key, (param, allowed_ints) in _CHOICES.items():
+        if key in filters:
+            n = _as_int(filters[key], key)
+            if n not in allowed_ints:
+                raise ValidationError(f"{key}: allowed values: {', '.join(map(str, allowed_ints))}")
+            params[param] = str(n)
 
-    # deuren (lijst van ints)
     if "doors" in filters:
-        param = _OPTION_FILTERS["doors"]
-        values = _as_list(filters["doors"], "doors")
-        ints: list[int] = []
-        for v in values:
-            n = _as_int(v, "doors")
-            if not 2 <= n <= 6:
-                raise ValidationError("doors: allowed values 2-6")
-            ints.append(n)
-        params[param] = ",".join(str(n) for n in ints)
-
-    # opties (numerieke id's)
+        params["drn"] = _int_list(filters["doors"], "doors", 2, 6)
     if "options" in filters:
-        values = _as_list(filters["options"], "options")
-        ids: list[str] = []
-        for v in values:
-            n = _as_int(v, "options")
-            if n < 0:
-                raise ValidationError("options: expected non-negative integer ids")
-            ids.append(str(n))
-        params["opt"] = ",".join(ids)
-
-    # nap (bool)
+        params["opt"] = _int_list(filters["options"], "options", 0, None)
     if "nap" in filters:
-        val = filters["nap"]
-        if not isinstance(val, bool):
+        if not isinstance(filters["nap"], bool):
             raise ValidationError("nap: expected a boolean")
-        if val:
+        if filters["nap"]:
             params["nap"] = "true"
 
-    # dagen (één gewaardeerde int)
-    if "days_listed" in filters:
-        n = _as_int(filters["days_listed"], "days_listed")
-        if n not in _DAYS_ALLOWED:
-            raise ValidationError("days_listed: allowed values: 1, 3, 5, 7, 14, 21, 28")
-        params["dagen"] = str(n)
-
-    # postcode + straal
-    pc = filters.get("postcode")
-    strl = filters.get("radius_km")
-    if strl is not None and pc is None:
+    if filters.get("postcode") is not None:
+        pc = str(filters["postcode"]).strip().upper().replace(" ", "")
+        if not _POSTCODE_RE.fullmatch(pc):
+            raise ValidationError("postcode: expected 4 digits, optionally followed by 2 letters")
+        params["pc"] = pc
+    elif "strl" in params:
         raise ValidationError("radius_km requires postcode")
-    if pc is not None:
-        params["pc"] = validate_postcode(str(pc))
-    if strl is not None:
-        n = _as_int(strl, "radius_km")
-        if n not in _RADIUS_ALLOWED:
-            raise ValidationError(
-                f"radius_km: allowed values: {', '.join(str(x) for x in sorted(_RADIUS_ALLOWED))}"
-            )
-        params["strl"] = str(n)
 
-    params["srt"] = SORT_MAP[sort]
     if sort == "distance" and "pc" not in params:
         raise ValidationError("sort 'distance' requires postcode")
+    params["srt"] = SORT_MAP[sort]
     if page > 1:
         params["page"] = str(page)
 
-    path = "/zoeken"
-    if brand is not None:
-        path = f"/{brand}"
-        if model is not None:
-            path += f"/{model}"
-
-    ordered = [(k, params[k]) for k in _PARAM_ORDER if k in params]
-    url = httpx.URL(BASE_URL + path, params=ordered)
-    return str(url)
-
-
-def _validate_range_bounds(key: str, low: int | None, high: int | None) -> None:
-    year = _current_year() + 1
-    if key == "year":
-        for v in (low, high):
-            if v is not None and not 1900 <= v <= year:
-                raise ValidationError(f"year: must be between 1900 and {year}")
-    elif key == "seats":
-        for v in (low, high):
-            if v is not None and not 1 <= v <= 9:
-                raise ValidationError("seats: must be between 1 and 9")
-    else:
-        # price, mileage, power, towing_weight, empty_weight, engine_cc: >= 0
-        for v in (low, high):
-            if v is not None and v < 0:
-                raise ValidationError(f"{key}: must be >= 0")
-
-
-_ALL_FILTER_KEYS = (
-    set(_RANGE_FILTERS)
-    | set(_LIST_FILTERS)
-    | set(_SINGLE_FILTERS)
-    | set(_OPTION_FILTERS)
-    | {"options", "nap", "days_listed", "postcode", "radius_km"}
-)
+    path = "/" + "/".join(s for s in (brand, model) if s) if brand else "/zoeken"
+    return str(httpx.URL(BASE_URL + path, params=[(k, params[k]) for k in _PARAM_ORDER if k in params]))

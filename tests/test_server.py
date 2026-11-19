@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
+
 import pytest
 from conftest import make_occasion, make_occasions_payload, make_page
 
@@ -21,7 +23,7 @@ class _FakeClient:
 
 def _patch_client(monkeypatch, html):
     monkeypatch.setattr(server, "_client", _FakeClient(html))
-    monkeypatch.setattr(server, "_memory", server._ListingMemory())
+    monkeypatch.setattr(server, "_memory", OrderedDict())
 
 
 @pytest.mark.asyncio
@@ -46,7 +48,7 @@ async def test_get_listing_no_network(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_get_listing_unknown(monkeypatch):
-    monkeypatch.setattr(server, "_memory", server._ListingMemory())
+    monkeypatch.setattr(server, "_memory", OrderedDict())
     with pytest.raises(ValueError, match="not seen in this session"):
         await server.get_listing(12345)
 
@@ -79,7 +81,7 @@ async def test_search_and_market_summary_share_cache(monkeypatch):
 
     payload = make_occasions_payload([make_occasion(1)], total=1, pages=1)
     monkeypatch.setattr(server, "_client", _Recorder(make_page(payload)))
-    monkeypatch.setattr(server, "_memory", server._ListingMemory())
+    monkeypatch.setattr(server, "_memory", OrderedDict())
     await server.search(brand="toyota", filters=None)
     await server.market_summary(brand="toyota", filters=None, max_pages=1)
     assert seen[0] == seen[1]
@@ -94,3 +96,20 @@ async def test_list_brands(monkeypatch):
     _patch_client(monkeypatch, make_page(payload))
     brands = await server.list_brands()
     assert brands[0]["slug"] == "toyota"
+
+
+@pytest.mark.asyncio
+async def test_market_summary_stops_at_last_page_and_single_price(monkeypatch):
+    calls = []
+
+    class _Counter(_FakeClient):
+        async def get_parsed(self, url, ttl_seconds, parser, namespace=""):
+            calls.append(url)
+            return parser(self.html)
+
+    payload = make_occasions_payload([make_occasion(1)], total=1, pages=1)
+    monkeypatch.setattr(server, "_client", _Counter(make_page(payload)))
+    result = await server.market_summary(keyword="x", filters=None, max_pages=5)
+    assert len(calls) == 1
+    assert result["price"]["p25"] == result["price"]["median"] == result["price"]["p75"]
+    assert "note" not in result

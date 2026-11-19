@@ -238,3 +238,23 @@ async def test_blocked_until_remembered():
     # tweede verzoek moet nu direct de "paused for another" fout geven
     with pytest.raises(ClientError, match="paused for another"):
         await c.get_html("https://www.gaspedaal.nl/zoeken")
+
+
+@pytest.mark.asyncio
+async def test_throttle_waits_between_requests(monkeypatch):
+    import gaspedaal_mcp.client as client_mod
+
+    clock = {"t": 1000.0}
+    sleeps: list[float] = []
+
+    async def fake_sleep(seconds):
+        sleeps.append(seconds)
+        clock["t"] += seconds
+
+    monkeypatch.setattr(client_mod.time, "monotonic", lambda: clock["t"])
+    monkeypatch.setattr(client_mod.asyncio, "sleep", fake_sleep)
+    c = _client(_ok_handler)
+    await c.get_html("https://www.gaspedaal.nl/zoeken")
+    clock["t"] += 0.25
+    await c.get_html("https://www.gaspedaal.nl/zoeken")
+    assert sleeps == [pytest.approx(0.75)]

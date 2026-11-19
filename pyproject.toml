@@ -40,6 +40,8 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "S", "SIM", "RUF"]
+# "A B C".split() is compacter dan een lijstliteral voor de enum-tabellen.
+ignore = ["SIM905"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S101"]
