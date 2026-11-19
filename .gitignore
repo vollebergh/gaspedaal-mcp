@@ -1,0 +1,20 @@
+# Obsidian-vault: documentatie, niet onder versiebeheer
+obsidian/
+
+# Build-uitvoer (wheels/sdists via `uv build --out-dir builds/`)
+builds/*
+!builds/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+
+# Lokaal
+.env
+.claude/settings.local.json
