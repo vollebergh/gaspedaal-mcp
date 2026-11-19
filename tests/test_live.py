@@ -13,7 +13,6 @@ from gaspedaal_mcp.client import GaspedaalClient
 pytestmark = pytest.mark.live
 
 
-@pytest.mark.asyncio
 async def test_search_price_asc():
     from gaspedaal_mcp import parse
 
@@ -30,7 +29,6 @@ async def test_search_price_asc():
     assert prices == sorted(prices)
 
 
-@pytest.mark.asyncio
 async def test_list_models_contains_rav4():
     from gaspedaal_mcp import parse
 
@@ -44,7 +42,6 @@ async def test_list_models_contains_rav4():
     assert "rav4" in slugs
 
 
-@pytest.mark.asyncio
 async def test_unconfirmed_param_recognized():
     """``tmin`` (trekgewicht): als de site de param herkent, daalt ``total`` strikt."""
     from gaspedaal_mcp import parse

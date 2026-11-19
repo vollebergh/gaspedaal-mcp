@@ -15,9 +15,11 @@ from typing import Any
 
 import httpx
 
+from . import __version__
 from .cache import DiskCache
+from .params import BASE_URL
 
-ALLOWED_HOST = "www.gaspedaal.nl"
+ALLOWED_HOST = httpx.URL(BASE_URL).host
 FORBIDDEN_PATH_PREFIX = "/api/proxy/redirect/"
 MIN_INTERVAL = 1.0
 SIZE_LIMIT = 8 * 1024 * 1024
@@ -125,11 +127,12 @@ class GaspedaalClient:
     async def get_parsed(
         self, url: str, ttl_seconds: int, parser: Callable[[str], dict[str, Any]], namespace: str = ""
     ) -> dict[str, Any]:
-        """Pagina ophalen en parsen, met cache onder ``namespace:url``.
+        """Pagina ophalen en parsen, met cache onder ``versie:namespace:url``.
 
         De namespace scheidt tools die dezelfde URL anders parsen (bv. list_models en search).
+        De versie zorgt dat een update met een andere parser geen oude uitvoer uit de cache krijgt.
         """
-        key = f"{namespace}:{url}"
+        key = f"{__version__}:{namespace}:{url}"
         cached = self.cache.get(key, ttl_seconds)
         if cached is not None:
             return cached

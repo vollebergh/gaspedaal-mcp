@@ -162,3 +162,23 @@ def test_find_value_skips_key_as_value():
 def test_find_value_decode_error_returns_none():
     text = '{"occasions": [unclosed'
     assert parse._find_value(text, "occasions") is None
+
+
+def test_text_fields_clipped_and_long_urls_dropped():
+    """CR-02: alle tekst ≤ 200 tekens; een te lange URL wordt None in plaats van afgekapt."""
+    occ = make_occasion(1)
+    occ["aanbieder"]["aanbiedergegevens"]["naamsvermelding"] = "x" * 5000
+    occ["portalen"][0]["portaalBeschrijving"] = "y" * 500
+    occ["gpFotos"]["fotoKlein"] = "https://cdn.example.invalid/" + "z" * 3000
+    listing = parse.parse_all(make_page(make_occasions_payload([occ])))["listings"][0]
+    assert len(listing["seller_name"]) == parse.MAX_TEXT
+    assert len(listing["offers"][0]["site"]) == parse.MAX_TEXT
+    assert listing["offers"][0]["url"] == "/api/proxy/redirect/vehicle/1"
+    assert listing["photo_url"] is None
+
+
+def test_bad_escape_in_fragment_is_format_error():
+    """CR-03."""
+    html = '<script>self.__next_f.push([1,"bad \\x escape"])</script>'
+    with pytest.raises(ValueError, match="Unexpected response format"):
+        parse.parse_all(html)

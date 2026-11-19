@@ -19,6 +19,12 @@ _DECODER = json.JSONDecoder()
 
 FORMAT_ERROR = "Unexpected response format from Gaspedaal"
 
+# Data van de site is onbetrouwbaar (SPEC §2.8): tekst inkorten, te lange URL's weglaten
+# (een afgekapte URL werkt toch niet).
+MAX_TEXT = 200
+MAX_URL = 2000
+_URL_KEYS = {"url", "photo_url"}
+
 # Bereik- en keuzefilters in `filters` -> toolsleutel.
 _STEP_KEYS = {
     "bouwjaar": "year",
@@ -83,7 +89,10 @@ class PageData:
     """Geparste zoekpagina: de ruwe (gesanitiseerde) blokken uit de flight-payload."""
 
     def __init__(self, html: str) -> None:
-        text = extract_flight_text(html)
+        try:
+            text = extract_flight_text(html)
+        except ValueError:
+            raise ValueError(FORMAT_ERROR) from None
         props = _find_value(text, "commonPortalURLProps")
         occasions = _find_value(text, "occasions")
         if not isinstance(props, dict) or not isinstance(occasions, list):
@@ -110,8 +119,8 @@ def _count(item: dict[str, Any] | None) -> int | None:
     """``count`` van een facet-item, of het getal uit ``label`` (``"Toyota (16.724)"`` → 16724)."""
     if not item:
         return None
-    if isinstance(item.get("count"), int):
-        return item["count"]
+    if isinstance(count := item.get("count"), int):
+        return count
     m = _COUNT_RE.search(item.get("label") or "")
     return int(m.group(1).replace(".", "")) if m else None
 
@@ -139,6 +148,19 @@ def _get(d: Any, path: str) -> Any:
     return d
 
 
+def _clip(value: Any, key: str = "") -> Any:
+    """Strings inkorten tot ``MAX_TEXT``; URL's langer dan ``MAX_URL`` worden ``None``. Recursief."""
+    if isinstance(value, str):
+        if key in _URL_KEYS:
+            return value if len(value) <= MAX_URL else None
+        return value[:MAX_TEXT]
+    if isinstance(value, list):
+        return [_clip(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _clip(v, k) for k, v in value.items()}
+    return value
+
+
 def _normalize_listing(occ: Any) -> dict[str, Any]:
     if not isinstance(occ, dict):
         return {}
@@ -147,15 +169,14 @@ def _normalize_listing(occ: Any) -> dict[str, Any]:
     motor = _dict(_get(occ, "autogegevens.motor"))
     seller = _dict(_get(occ, "aanbieder.aanbiedergegevens"))
 
-    version = alg.get("uitvoering")
     power_kw = motor.get("vermogenKw")
     place, province = seller.get("plaatsnaam"), seller.get("provincieHulpwaarde")
-    return {
+    listing: dict[str, Any] = {
         "id": occ.get("advertentieId"),
         "listed_at": occ.get("datumGeplaatst"),
         "brand": alg.get("merknaam"),
         "model": alg.get("modelnaam"),
-        "version": version[:200] if isinstance(version, str) else version,
+        "version": alg.get("uitvoering"),
         "fuel": alg.get("brandstofsoort"),
         "transmission": alg.get("transmissietype"),
         "body": alg.get("carrosserievorm"),
@@ -176,6 +197,7 @@ def _normalize_listing(occ: Any) -> dict[str, Any]:
         ],
         "photo_url": _get(occ, "gpFotos.fotoKlein"),
     }
+    return {k: _clip(v, k) for k, v in listing.items()}
 
 
 def parse_all(html: str) -> dict[str, Any]:

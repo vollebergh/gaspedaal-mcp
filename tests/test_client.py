@@ -24,21 +24,18 @@ def _ok_handler(request: httpx.Request) -> httpx.Response:
     return httpx.Response(200, text="<html>x</html>")
 
 
-@pytest.mark.asyncio
 async def test_allowed_host():
     c = _client(_ok_handler)
     html = await c.get_html("https://www.gaspedaal.nl/zoeken")
     assert html == "<html>x</html>"
 
 
-@pytest.mark.asyncio
 async def test_blocks_other_host():
     c = _client(_ok_handler)
     with pytest.raises(ClientError):
         await c.get_html("https://evil.example.com/zoeken")
 
 
-@pytest.mark.asyncio
 async def test_blocks_redirect_to_other_host():
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.host == "www.gaspedaal.nl":
@@ -50,14 +47,12 @@ async def test_blocks_redirect_to_other_host():
         await c.get_html("https://www.gaspedaal.nl/start")
 
 
-@pytest.mark.asyncio
 async def test_blocks_proxy_redirect_path():
     c = _client(_ok_handler)
     with pytest.raises(ClientError):
         await c.get_html("https://www.gaspedaal.nl/api/proxy/redirect/vehicle/1")
 
 
-@pytest.mark.asyncio
 async def test_429_retry_after_seconds():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(429, headers={"Retry-After": "30"})
@@ -68,7 +63,6 @@ async def test_429_retry_after_seconds():
     assert exc_info.value.retry_after == 30
 
 
-@pytest.mark.asyncio
 async def test_429_retry_after_http_date():
     import email.utils
     from datetime import datetime, timedelta
@@ -85,7 +79,6 @@ async def test_429_retry_after_http_date():
     assert exc_info.value.retry_after is not None
 
 
-@pytest.mark.asyncio
 async def test_403_blocked():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(403, text="challenge")
@@ -95,7 +88,6 @@ async def test_403_blocked():
         await c.get_html("https://www.gaspedaal.nl/zoeken")
 
 
-@pytest.mark.asyncio
 async def test_404():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(404)
@@ -105,7 +97,6 @@ async def test_404():
         await c.get_html("https://www.gaspedaal.nl/onbekend")
 
 
-@pytest.mark.asyncio
 async def test_size_limit():
     big = "a" * (9 * 1024 * 1024)
 
@@ -117,7 +108,6 @@ async def test_size_limit():
         await c.get_html("https://www.gaspedaal.nl/zoeken")
 
 
-@pytest.mark.asyncio
 async def test_size_limit_without_content_length_stops_reading():
     """Zonder Content-Length moet het lezen stoppen zodra de limiet is overschreden."""
     produced = {"bytes": 0}
@@ -138,7 +128,6 @@ async def test_size_limit_without_content_length_stops_reading():
     assert produced["bytes"] <= 9 * 1024 * 1024
 
 
-@pytest.mark.asyncio
 async def test_cache_hit(tmp_path):
     hits = {"n": 0}
 
@@ -156,7 +145,6 @@ async def test_cache_hit(tmp_path):
     assert hits["n"] == 1
 
 
-@pytest.mark.asyncio
 async def test_cache_expired(tmp_path):
     import time
 
@@ -173,7 +161,6 @@ async def test_cache_expired(tmp_path):
     import json as _json
 
     f = glob.glob(str(tmp_path / "*.json"))[0]
-    data = _json.loads("{}")  # placeholder
     with open(f) as fh:
         data = _json.load(fh)
     data["_cached_at"] = time.time() - 99999
@@ -184,7 +171,6 @@ async def test_cache_expired(tmp_path):
     assert result == {"v": "fresh"}
 
 
-@pytest.mark.asyncio
 async def test_cache_disabled_mb_zero():
     hits = {"n": 0}
 
@@ -199,7 +185,6 @@ async def test_cache_disabled_mb_zero():
     assert hits["n"] == 2
 
 
-@pytest.mark.asyncio
 async def test_cache_namespace_separates_entries(tmp_path):
     hits = {"n": 0}
 
@@ -219,7 +204,6 @@ async def test_cache_namespace_separates_entries(tmp_path):
     assert hits["n"] == 2
 
 
-@pytest.mark.asyncio
 async def test_cache_filename_is_sha256():
     cache = DiskCache(max_mb=10)
     long_key = "https://www.gaspedaal.nl/zoeken?" + "x" * 500
@@ -227,7 +211,6 @@ async def test_cache_filename_is_sha256():
     assert len(path.name) == 64 + len(".json")
 
 
-@pytest.mark.asyncio
 async def test_blocked_until_remembered():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(429, headers={"Retry-After": "60"})
@@ -240,7 +223,6 @@ async def test_blocked_until_remembered():
         await c.get_html("https://www.gaspedaal.nl/zoeken")
 
 
-@pytest.mark.asyncio
 async def test_throttle_waits_between_requests(monkeypatch):
     import gaspedaal_mcp.client as client_mod
 
@@ -258,3 +240,71 @@ async def test_throttle_waits_between_requests(monkeypatch):
     clock["t"] += 0.25
     await c.get_html("https://www.gaspedaal.nl/zoeken")
     assert sleeps == [pytest.approx(0.75)]
+
+
+async def test_503_pauses_like_429():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503)
+
+    c = _client(handler)
+    with pytest.raises(ClientError, match=r"HTTP 503\); pausing 300 s"):
+        await c.get_html("https://www.gaspedaal.nl/zoeken")
+
+
+async def test_cache_key_contains_version(tmp_path, monkeypatch):
+    """CR-01: een andere versie leest geen entry van een vorige versie."""
+    import gaspedaal_mcp.client as client_mod
+
+    hits = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        hits["n"] += 1
+        return httpx.Response(200, text="<html>x</html>")
+
+    cache = DiskCache(directory=tmp_path, max_mb=10, max_days=7)
+    url = "https://www.gaspedaal.nl/zoeken"
+    monkeypatch.setattr(client_mod, "__version__", "0.1.0")
+    await _client(handler, cache=cache).get_parsed(url, 3600, lambda html: {"v": 1}, namespace="x")
+    monkeypatch.setattr(client_mod, "__version__", "0.2.0")
+    result = await _client(handler, cache=cache).get_parsed(url, 3600, lambda html: {"v": 2}, namespace="x")
+    assert result == {"v": 2}
+    assert hits["n"] == 2
+
+
+def test_cache_file_and_dir_permissions(tmp_path):
+    import stat
+
+    directory = tmp_path / "cache"
+    cache = DiskCache(directory=directory, max_mb=10, max_days=7)
+    cache.set("k", {"v": 1})
+    assert stat.S_IMODE(directory.stat().st_mode) == 0o700
+    assert stat.S_IMODE(cache._path("k").stat().st_mode) == 0o600
+
+
+@pytest.mark.parametrize("content", ["{not json", "[]", '{"value": [1]}', '{"value": {"a": 1}}'])
+def test_cache_corrupt_entry_is_a_miss(tmp_path, content):
+    cache = DiskCache(directory=tmp_path, max_mb=10, max_days=7)
+    cache._path("k").write_text(content)
+    assert cache.get("k", 3600) is None
+    assert not cache._path("k").exists()
+
+
+def test_cache_evicts_oldest_over_size_and_too_old(tmp_path):
+    import os
+    import time
+
+    cache = DiskCache(directory=tmp_path, max_mb=1, max_days=7)
+    blob = {"v": "x" * 400_000}  # ± 0,4 MB per entry
+    for i, key in enumerate(("a", "b", "c")):
+        cache.set(key, blob)
+        t = time.time() - 100 + i  # a oudst, c nieuwst
+        os.utime(cache._path(key), (t, t))
+    cache.set("d", blob)  # nu ± 1,6 MB: de oudste gaan eruit tot het past
+    assert not cache._path("a").exists()
+    assert not cache._path("b").exists()
+    assert cache._path("c").exists() and cache._path("d").exists()
+
+    old = time.time() - 8 * 86400
+    os.utime(cache._path("c"), (old, old))
+    cache.set("e", {"v": 1})
+    assert not cache._path("c").exists()

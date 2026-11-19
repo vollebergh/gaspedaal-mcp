@@ -48,13 +48,21 @@ class DiskCache:
         path = self._path(key)
         try:
             entry = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return None
-        if time.time() - entry.get("_cached_at", 0) > min(ttl_seconds, self.max_age):
+        except OSError:
+            return None  # ontbreekt (of onleesbaar)
+        except ValueError:
+            entry = {}  # corrupt: hieronder weggooien
+        entry = entry if isinstance(entry, dict) else {}
+        value, cached_at = entry.get("value"), entry.get("_cached_at")
+        if (
+            not isinstance(value, dict)
+            or not isinstance(cached_at, (int, float))
+            or time.time() - cached_at > min(ttl_seconds, self.max_age)
+        ):
             with contextlib.suppress(OSError):
-                path.unlink()
+                path.unlink()  # verlopen of onbruikbaar
             return None
-        return entry.get("value")
+        return value
 
     def set(self, key: str, value: dict[str, Any]) -> None:
         """Atomisch schrijven; fouten kosten alleen de cache, nooit de toolaanroep."""

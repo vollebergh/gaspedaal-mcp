@@ -130,3 +130,8 @@ def test_doors_int_accepted():
 def test_options_int_accepted():
     url = build_url(None, None, None, {"options": 420}, "relevance", 1)
     assert "opt=420" in url
+
+
+def test_postcode_normalized():
+    url = build_url(None, None, None, {"postcode": " 3511 ab ", "radius_km": 10}, "distance", 1)
+    assert url.endswith("pc=3511AB&strl=10&srt=af-a")

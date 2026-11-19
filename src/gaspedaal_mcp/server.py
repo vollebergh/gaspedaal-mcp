@@ -68,17 +68,21 @@ async def list_brands() -> list[dict[str, Any]]:
     data = await _client.get_parsed(
         url, TTL_LISTS, lambda html: {"brands": parse.list_brands_from_page(html)}, namespace="brands"
     )
-    return data["brands"]
+    brands: list[dict[str, Any]] = data["brands"]
+    return brands
 
 
 @mcp.tool(annotations=_TOOL)
-async def list_models(brand: Annotated[str, Field(description="Brand slug from list_brands")]) -> list[dict]:
+async def list_models(
+    brand: Annotated[str, Field(description="Brand slug from list_brands")],
+) -> list[dict[str, Any]]:
     """List all models of a brand with slug, name and listing count."""
     url = build_url(brand, None, None, None, "relevance", 1)
     data = await _client.get_parsed(
         url, TTL_LISTS, lambda html: {"models": parse.list_models_from_page(html)}, namespace="models"
     )
-    return data["models"]
+    models: list[dict[str, Any]] = data["models"]
+    return models
 
 
 @mcp.tool(annotations=_TOOL)
@@ -141,30 +145,8 @@ def _median(values: list[float]) -> float | None:
     return statistics.median(values) if values else None
 
 
-@mcp.tool(annotations=_TOOL)
-async def market_summary(
-    brand: Brand = None,
-    model: Model = None,
-    keyword: Keyword = None,
-    filters: Filters = None,
-    max_pages: Annotated[int, Field(description=f"How many pages of 100 to read (1-{MAX_PAGES})")] = 3,
-) -> dict[str, Any]:
-    """Price and mileage statistics over the first pages in relevance order.
-
-    This is a sample, not the full market; `note` says so when the sample is smaller than the total.
-    """
-    if not 1 <= max_pages <= MAX_PAGES:
-        raise ValueError(f"max_pages must be between 1 and {MAX_PAGES}")
-
-    listings: list[dict[str, Any]] = []
-    total = None
-    for page in range(1, max_pages + 1):
-        _, data = await _search_page(brand, model, keyword, filters, "relevance", page)
-        total = data["total"] if total is None else total
-        listings += data["listings"]
-        if not data["listings"] or (data["pages"] or 0) <= page:
-            break
-
+def summarize(listings: list[dict[str, Any]], total: int | None) -> dict[str, Any]:
+    """Statistiek over een steekproef advertenties (pure functie, zie market_summary)."""
     prices = sorted(_numbers(listings, "price_eur"))
     summary: dict[str, Any] = {"count_total": total, "sample_size": len(listings)}
     if prices:
@@ -193,6 +175,32 @@ async def market_summary(
             "not the full market"
         )
     return summary
+
+
+@mcp.tool(annotations=_TOOL)
+async def market_summary(
+    brand: Brand = None,
+    model: Model = None,
+    keyword: Keyword = None,
+    filters: Filters = None,
+    max_pages: Annotated[int, Field(description=f"How many pages of 100 to read (1-{MAX_PAGES})")] = 3,
+) -> dict[str, Any]:
+    """Price and mileage statistics over the first pages in relevance order.
+
+    This is a sample, not the full market; `note` says so when the sample is smaller than the total.
+    """
+    if not 1 <= max_pages <= MAX_PAGES:
+        raise ValueError(f"max_pages must be between 1 and {MAX_PAGES}")
+
+    listings: list[dict[str, Any]] = []
+    total = None
+    for page in range(1, max_pages + 1):
+        _, data = await _search_page(brand, model, keyword, filters, "relevance", page)
+        total = data["total"] if total is None else total
+        listings += data["listings"]
+        if not data["listings"] or (data["pages"] or 0) <= page:
+            break
+    return summarize(listings, total)
 
 
 def main() -> None:
