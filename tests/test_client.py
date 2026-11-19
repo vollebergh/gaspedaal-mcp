@@ -308,3 +308,86 @@ def test_cache_evicts_oldest_over_size_and_too_old(tmp_path):
     os.utime(cache._path("c"), (old, old))
     cache.set("e", {"v": 1})
     assert not cache._path("c").exists()
+
+
+# --- Security review B-08 -------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://www.gaspedaal.nl:8443/zoeken",
+        "https://www.gaspedaal.nl//api/proxy/redirect/vehicle/1",
+        "https://www.gaspedaal.nl/zoeken/../api/proxy/redirect/vehicle/1",
+        "https://www.gaspedaal.nl/API/Proxy/Redirect/vehicle/1",
+        "https://www.gaspedaal.nl/api/proxy/%2572edirect/vehicle/1".replace("%25", "%"),
+    ],
+)
+async def test_hook_blocks_port_and_path_tricks(url):
+    """S-03."""
+    c = _client(_ok_handler)
+    with pytest.raises(ClientError):
+        await c.get_html(url)
+
+
+async def test_redirect_to_forbidden_path_is_blocked():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/start":
+            return httpx.Response(302, headers={"location": "//www.gaspedaal.nl//api/proxy/redirect/v/1"})
+        return httpx.Response(200, text="should not be fetched")
+
+    with pytest.raises(ClientError, match="forbidden path"):
+        await _client(handler).get_html("https://www.gaspedaal.nl/start")
+
+
+async def test_redirect_chain_is_limited():
+    def handler(request: httpx.Request) -> httpx.Response:
+        n = int(request.url.params.get("n", "0"))
+        return httpx.Response(302, headers={"location": f"/loop?n={n + 1}"})
+
+    with pytest.raises(ClientError, match="Request to Gaspedaal failed"):
+        await _client(handler).get_html("https://www.gaspedaal.nl/loop")
+
+
+async def test_total_deadline(monkeypatch):
+    """S-06: een trage server houdt de lock niet onbeperkt vast."""
+    import asyncio
+
+    import gaspedaal_mcp.client as client_mod
+
+    class Slow(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            while True:
+                await asyncio.sleep(0.05)
+                yield b"x"
+
+    monkeypatch.setattr(client_mod, "DEADLINE", 0.3)
+    c = _client(lambda request: httpx.Response(200, stream=Slow()))
+    with pytest.raises(ClientError, match="no complete answer within"):
+        await c.get_html("https://www.gaspedaal.nl/zoeken")
+
+
+def test_cache_refuses_shared_directory(tmp_path):
+    """S-02: een door anderen beschrijfbare map wordt niet gebruikt."""
+    import os
+
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    os.chmod(shared, 0o777)  # noqa: S103 - bewust: een gedeelde map nabootsen
+    cache = DiskCache(directory=shared, max_mb=10, max_days=7)
+    cache.set("k", {"v": 1})
+    assert list(shared.iterdir()) == []
+    assert cache.get("k", 3600) is None
+
+
+def test_cache_write_does_not_follow_symlink(tmp_path):
+    """S-02: een neergezet symlink op de oude vaste tmp-naam wordt niet gevolgd."""
+    directory = tmp_path / "cache"
+    cache = DiskCache(directory=directory, max_mb=10, max_days=7)
+    cache.set("warm", {"v": 0})  # map aanmaken
+    victim = tmp_path / "victim.txt"
+    victim.write_text("belangrijk")
+    cache._path("k").with_suffix(".tmp").symlink_to(victim)
+    cache.set("k", {"v": 1})
+    assert victim.read_text() == "belangrijk"
+    assert cache.get("k", 3600) == {"v": 1}

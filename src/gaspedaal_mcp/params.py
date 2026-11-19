@@ -81,16 +81,26 @@ _PARAM_ORDER = (
 ).split()
 
 
+# Grenzen op invoer: houdt URL's kort en getallen redelijk (ook tegen Python's
+# limiet van 4.300 cijfers bij int → str).
+MAX_NUMBER = 10_000_000
+MAX_VALUES = 20
+
+
 class ValidationError(ValueError):
     """Korte foutmelding voor de gebruiker."""
 
 
 def _as_list(value: Any, key: str) -> list[str]:
+    """Eén waarde of een lijst; dubbele waarden eruit, hoogstens ``MAX_VALUES``."""
     if isinstance(value, str) or (isinstance(value, int) and not isinstance(value, bool)):
-        return [str(value)]
-    if isinstance(value, (list, tuple)):
-        return [str(v) for v in value]
-    raise ValidationError(f"{key}: expected a string, an integer, or a list of them")
+        value = [value]
+    if not isinstance(value, (list, tuple)):
+        raise ValidationError(f"{key}: expected a string, an integer, or a list of them")
+    values = list(dict.fromkeys(str(v)[:50] for v in value))
+    if len(values) > MAX_VALUES:
+        raise ValidationError(f"{key}: at most {MAX_VALUES} values")
+    return values
 
 
 def _as_int(value: Any, key: str) -> int:
@@ -102,11 +112,11 @@ def _as_int(value: Any, key: str) -> int:
         raise ValidationError(f"{key}: expected an integer") from None
 
 
-def _int_list(value: Any, key: str, low: int, high: int | None) -> str:
+def _int_list(value: Any, key: str, low: int, high: int = MAX_NUMBER) -> str:
     """Lijst van gehele getallen binnen [low, high], als kommagescheiden string."""
     ints = [_as_int(v, key) for v in _as_list(value, key)]
-    if any(n < low or (high is not None and n > high) for n in ints):
-        raise ValidationError(f"{key}: values must be {low}-{high}" if high else f"{key}: must be >= {low}")
+    if any(not low <= n <= high for n in ints):
+        raise ValidationError(f"{key}: values must be {low}-{high}")
     return ",".join(map(str, ints))
 
 
@@ -119,11 +129,10 @@ def _range(value: Any, key: str) -> tuple[int | None, int | None]:
     _, _, floor, ceil = _RANGES[key]
     if key == "year":
         ceil = datetime.date.today().year + 1
+    ceil = MAX_NUMBER if ceil is None else ceil
     for v in (low, high):
-        if v is not None and (v < floor or (ceil is not None and v > ceil)):
-            raise ValidationError(
-                f"{key}: must be between {floor} and {ceil}" if ceil else f"{key}: must be >= {floor}"
-            )
+        if v is not None and not floor <= v <= ceil:
+            raise ValidationError(f"{key}: must be between {floor} and {ceil}")
     return low, high
 
 
@@ -188,7 +197,7 @@ def build_url(
     if "doors" in filters:
         params["drn"] = _int_list(filters["doors"], "doors", 2, 6)
     if "options" in filters:
-        params["opt"] = _int_list(filters["options"], "options", 0, None)
+        params["opt"] = _int_list(filters["options"], "options", 0)
     if "nap" in filters:
         if not isinstance(filters["nap"], bool):
             raise ValidationError("nap: expected a boolean")

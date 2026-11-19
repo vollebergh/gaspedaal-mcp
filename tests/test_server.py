@@ -160,3 +160,10 @@ def test_summarize_is_pure():
     assert s["by_year"][0] == {"year": 2020, "n": 2, "median_price": 1000, "median_mileage": 20.0}
     assert s["by_fuel"] == {"BENZINE": 2, "DIESEL": 1}
     assert s["note"].startswith("Sample of the first 3 listings")
+
+
+def test_httpx_does_not_log_urls():
+    """S-05: zoektermen en postcode niet in de logbestanden van de MCP-client."""
+    import logging
+
+    assert logging.getLogger("httpx").level == logging.WARNING

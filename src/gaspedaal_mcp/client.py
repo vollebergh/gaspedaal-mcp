@@ -8,10 +8,13 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import posixpath
+import re
 import time
 from collections.abc import Callable
 from email.utils import parsedate_to_datetime
 from typing import Any
+from urllib.parse import unquote
 
 import httpx
 
@@ -20,8 +23,11 @@ from .cache import DiskCache
 from .params import BASE_URL
 
 ALLOWED_HOST = httpx.URL(BASE_URL).host
-FORBIDDEN_PATH_PREFIX = "/api/proxy/redirect/"
+FORBIDDEN_PATH_PREFIX = "/api/proxy/redirect"
 MIN_INTERVAL = 1.0
+TIMEOUT = httpx.Timeout(20.0, connect=10.0)  # per fase (verbinden, lezen per chunk, ...)
+DEADLINE = 60.0  # totaal per verzoek, inclusief redirects en het lezen van de body
+MAX_REDIRECTS = 5
 SIZE_LIMIT = 8 * 1024 * 1024
 DEFAULT_RETRY_AFTER = 300
 MAX_RETRY_AFTER = 3600
@@ -38,14 +44,19 @@ class ClientError(Exception):
         self.retry_after = retry_after
 
 
+def _normalized_path(path: str) -> str:
+    """Pad zoals de server het waarschijnlijk leest: gedecodeerd, dubbele slashes en ``..`` weg, klein."""
+    return posixpath.normpath(re.sub(r"/+", "/", "/" + unquote(path))).lower()
+
+
 async def _only_allowed_hosts(request: httpx.Request) -> None:
     """Request-hook: draait ook bij elke redirect-stap (SSRF-bescherming)."""
     url = request.url
     if request.method != "GET":
         raise ClientError("Only GET requests are allowed")
-    if url.scheme != "https" or url.host != ALLOWED_HOST:
+    if url.scheme != "https" or url.host != ALLOWED_HOST or url.port not in (None, 443):
         raise ClientError(f"Blocked request to unexpected host '{url.host}' (SSRF protection)")
-    if url.path.startswith(FORBIDDEN_PATH_PREFIX):
+    if _normalized_path(url.path).startswith(FORBIDDEN_PATH_PREFIX):
         raise ClientError(f"Refusing to fetch forbidden path '{url.path}'")
 
 
@@ -71,6 +82,8 @@ class GaspedaalClient:
             transport=transport,
             headers={"User-Agent": USER_AGENT},
             follow_redirects=True,
+            max_redirects=MAX_REDIRECTS,
+            timeout=TIMEOUT,
             event_hooks={"request": [_only_allowed_hosts]},
         )
 
@@ -92,8 +105,12 @@ class GaspedaalClient:
                 await asyncio.sleep(wait)
             self._last_request = time.monotonic()
             try:
-                async with self._client.stream("GET", url) as response:
+                async with asyncio.timeout(DEADLINE), self._client.stream("GET", url) as response:
                     return await self._read_limited(response)
+            except TimeoutError:
+                raise ClientError(
+                    f"Request to Gaspedaal failed: no complete answer within {DEADLINE:.0f} s"
+                ) from None
             except httpx.HTTPError as exc:
                 raise ClientError(f"Request to Gaspedaal failed: {exc}") from exc
 

@@ -173,7 +173,7 @@ def test_text_fields_clipped_and_long_urls_dropped():
     listing = parse.parse_all(make_page(make_occasions_payload([occ])))["listings"][0]
     assert len(listing["seller_name"]) == parse.MAX_TEXT
     assert len(listing["offers"][0]["site"]) == parse.MAX_TEXT
-    assert listing["offers"][0]["url"] == "/api/proxy/redirect/vehicle/1"
+    assert listing["offers"][0]["url"] == "https://www.gaspedaal.nl/api/proxy/redirect/vehicle/1"
     assert listing["photo_url"] is None
 
 
@@ -182,3 +182,72 @@ def test_bad_escape_in_fragment_is_format_error():
     html = '<script>self.__next_f.push([1,"bad \\x escape"])</script>'
     with pytest.raises(ValueError, match="Unexpected response format"):
         parse.parse_all(html)
+
+
+# --- Security review B-08 -------------------------------------------------------------
+
+
+def test_push_regex_is_linear_on_unterminated_fragments():
+    """S-01: fragmenten zonder afsluiter mogen niet kwadratisch worden (ReDoS)."""
+    import time
+
+    html = ('self.__next_f.push([1,"' + "a" * 20) * 40_000  # ± 1,7 MB
+    t = time.perf_counter()
+    with pytest.raises(ValueError, match="Unexpected response format"):
+        parse.parse_all(html)
+    assert time.perf_counter() - t < 2.0  # oude regex: uren
+
+
+def test_push_regex_keeps_escaped_quotes():
+    html = make_page(make_occasions_payload([make_occasion(1, datumGeplaatst='quote " en \\ slash')]))
+    assert parse.parse_all(html)["listings"][0]["listed_at"] == 'quote " en \\ slash'
+
+
+def test_deep_nesting_is_format_error():
+    """S-06: absurd diep geneste JSON geeft de formaatfout, geen RecursionError."""
+    import json
+
+    depth = 100_000
+    inner = '{"commonPortalURLProps":{},"occasions":' + "[" * depth + "]" * depth + "}"
+    html = f"<script>self.__next_f.push([1,{json.dumps(inner)}])</script>"
+    with pytest.raises(ValueError, match="Unexpected response format"):
+        parse.parse_all(html)
+
+
+@pytest.mark.parametrize(
+    ("klik", "expected"),
+    [
+        ("/api/proxy/redirect/vehicle/9", "https://www.gaspedaal.nl/api/proxy/redirect/vehicle/9"),
+        (
+            "https://www.gaspedaal.nl/api/proxy/redirect/vehicle/9",
+            "https://www.gaspedaal.nl/api/proxy/redirect/vehicle/9",
+        ),
+        ("https://evil.example/api/proxy/redirect/vehicle/9", None),
+        ("javascript:alert(1)", None),
+        ("http://www.gaspedaal.nl/api/proxy/redirect/vehicle/9", None),
+        ("https://www.gaspedaal.nl/elders", None),
+        ("//evil.example/api/proxy/redirect/vehicle/9", None),
+    ],
+)
+def test_offer_url_only_gaspedaal_redirect(klik, expected):
+    """S-04: de gebruiker opent offer-URL's zelf; alleen de eigen doorverwijzer van Gaspedaal."""
+    occ = make_occasion(1)
+    occ["portalen"][0]["klikUrl"] = klik
+    occ["gpFotos"]["fotoKlein"] = "javascript:alert(1)"
+    listing = parse.parse_all(make_page(make_occasions_payload([occ])))["listings"][0]
+    assert listing["offers"][0]["url"] == expected
+    assert listing["photo_url"] is None
+
+
+def test_list_texts_are_clipped():
+    """S-08: ook labels en namen in list_brands en list_filters zijn begrensd."""
+    payload = make_occasions_payload(
+        [make_occasion(1)],
+        dynamicFieldValues={
+            "merken": [{"slug": "x", "name": "N" * 1000, "label": "L (1)"}],
+            "brandstofsoort": [{"value": "BENZINE", "label": "B" * 1000}],
+        },
+    )
+    html = make_page(payload)
+    assert len(parse.list_brands_from_page(html)[0]["name"]) == parse.MAX_TEXT
+    assert len(parse.parse_list_filters(html)["fuel"]["values"][0]["label"]) == parse.MAX_TEXT

@@ -50,7 +50,7 @@ Sortering (`sort`): `relevance` (standaard), `distance` (vereist postcode), `pri
 **Claude Code:**
 
 ```bash
-claude mcp add --scope user gaspedaal -- uvx --from git+ssh://git@github.com/vollebergh/gaspedaal-mcp@v0.1.0 gaspedaal-mcp
+claude mcp add --scope user gaspedaal -- uvx --exclude-newer 2026-11-19 --from git+ssh://git@github.com/vollebergh/gaspedaal-mcp@v0.1.0 gaspedaal-mcp
 ```
 
 **opencode** (`opencode.json`):
@@ -60,11 +60,13 @@ claude mcp add --scope user gaspedaal -- uvx --from git+ssh://git@github.com/vol
   "mcp": {
     "gaspedaal": {
       "type": "local",
-      "command": ["uvx", "--from", "git+ssh://git@github.com/vollebergh/gaspedaal-mcp@v0.1.0", "gaspedaal-mcp"]
+      "command": ["uvx", "--exclude-newer", "2026-11-19", "--from", "git+ssh://git@github.com/vollebergh/gaspedaal-mcp@v0.1.0", "gaspedaal-mcp"]
     }
   }
 }
 ```
+
+`uvx` negeert `uv.lock` en kiest zelf de nieuwste versies van de afhankelijkheden. `--exclude-newer` houdt die op de stand van de release, zodat een later uitgebrachte (mogelijk kwaadaardige) versie er niet ongemerkt in komt. Volledig vastgezet, met hashes uit `uv.lock`, draai je vanuit een clone: `uv run --frozen --directory <pad-naar-clone> gaspedaal-mcp`.
 
 ## Cache
 

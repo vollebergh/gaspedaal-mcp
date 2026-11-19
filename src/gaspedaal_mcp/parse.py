@@ -10,10 +10,15 @@ from __future__ import annotations
 import json
 import re
 from typing import Any
+from urllib.parse import urljoin
 
-from .params import PARAM_NAMES
+import httpx
 
-_PUSH_RE = re.compile(r'self\.__next_f\.push\(\[1,"(.*?)"\]\)</script>', re.DOTALL)
+from .params import BASE_URL, PARAM_NAMES
+
+# Een JSON-string zonder onge-escapete `"`; possessief (`*+`), zodat een fragment zonder
+# afsluiter lineair faalt in plaats van kwadratisch (ReDoS, CWE-1333).
+_PUSH_RE = re.compile(r'self\.__next_f\.push\(\[1,"((?:[^"\\]|\\.)*+)"\]\)</script>', re.DOTALL)
 _COUNT_RE = re.compile(r"\(([\d.]+)\)")
 _DECODER = json.JSONDecoder()
 
@@ -81,7 +86,7 @@ def _find_value(text: str, key: str) -> Any:
         start += 1
     try:
         return _sanitize(_DECODER.raw_decode(text, start)[0])
-    except ValueError:
+    except (ValueError, RecursionError):  # kapot of absurd diep genest
         return None
 
 
@@ -132,12 +137,13 @@ def _slug_list(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def list_brands_from_page(html: str) -> list[dict[str, Any]]:
-    brands = _slug_list(PageData(html).facet("merken"))
+    brands: list[dict[str, Any]] = _clip(_slug_list(PageData(html).facet("merken")))
     return sorted(brands, key=lambda b: (b["name"] or "").lower())
 
 
 def list_models_from_page(html: str) -> list[dict[str, Any]]:
-    return [m for m in _slug_list(PageData(html).facet("modellen")) if m["count"] != 0]
+    models: list[dict[str, Any]] = _clip(_slug_list(PageData(html).facet("modellen")))
+    return [m for m in models if m["count"] != 0]
 
 
 def _get(d: Any, path: str) -> Any:
@@ -159,6 +165,27 @@ def _clip(value: Any, key: str = "") -> Any:
     if isinstance(value, dict):
         return {k: _clip(v, k) for k, v in value.items()}
     return value
+
+
+_SITE_HOST = httpx.URL(BASE_URL).host
+_OFFER_PATH = "/api/proxy/redirect/"
+
+
+def _offer_url(value: Any) -> str | None:
+    """Alleen een https-link naar de eigen doorverwijzer van Gaspedaal; al het andere wordt ``None``.
+
+    De gebruiker opent deze link zelf: een gemanipuleerde respons mag hem niet naar een
+    willekeurige site (of een ``javascript:``-URL) sturen.
+    """
+    if not isinstance(value, str):
+        return None
+    url = httpx.URL(urljoin(BASE_URL, value))
+    ok = url.scheme == "https" and url.host == _SITE_HOST and url.path.startswith(_OFFER_PATH)
+    return str(url) if ok else None
+
+
+def _photo_url(value: Any) -> str | None:
+    return value if isinstance(value, str) and value.startswith("https://") else None
 
 
 def _normalize_listing(occ: Any) -> dict[str, Any]:
@@ -191,11 +218,15 @@ def _normalize_listing(occ: Any) -> dict[str, Any]:
         "location": (f"{place} ({province})" if province else place) if place else None,
         "seller_name": seller.get("naamsvermelding") or None,
         "offers": [
-            {"site": p.get("portaalBeschrijving"), "type": p.get("portaalType"), "url": p.get("klikUrl")}
+            {
+                "site": p.get("portaalBeschrijving"),
+                "type": p.get("portaalType"),
+                "url": _offer_url(p.get("klikUrl")),
+            }
             for p in occ.get("portalen") or []
             if isinstance(p, dict)
         ],
-        "photo_url": _get(occ, "gpFotos.fotoKlein"),
+        "photo_url": _photo_url(_get(occ, "gpFotos.fotoKlein")),
     }
     return {k: _clip(v, k) for k, v in listing.items()}
 
@@ -247,4 +278,5 @@ def parse_list_filters(html: str) -> dict[str, Any]:
         if page.filters.get(site_key) is not None:
             result[key] = {"param": PARAM_NAMES[key], "steps": page.filters[site_key]}
 
-    return result
+    clipped: dict[str, Any] = _clip(result)  # site-tekst (labels, namen) is onbetrouwbaar
+    return clipped

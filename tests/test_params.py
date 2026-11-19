@@ -135,3 +135,22 @@ def test_options_int_accepted():
 def test_postcode_normalized():
     url = build_url(None, None, None, {"postcode": " 3511 ab ", "radius_km": 10}, "distance", 1)
     assert url.endswith("pc=3511AB&strl=10&srt=af-a")
+
+
+# --- Security review B-08 (S-06) ------------------------------------------------------
+
+
+def test_huge_numbers_rejected():
+    with pytest.raises(ValidationError, match="price: must be between 0 and 10000000"):
+        build_url(None, None, None, {"price": {"min": 10**5000}}, "relevance", 1)
+    with pytest.raises(ValidationError, match="expected an integer"):
+        build_url(None, None, None, {"mileage": {"max": "9" * 5000}}, "relevance", 1)
+    with pytest.raises(ValidationError, match="options: values must be"):
+        build_url(None, None, None, {"options": [10**12]}, "relevance", 1)
+
+
+def test_long_lists_rejected_and_duplicates_removed():
+    with pytest.raises(ValidationError, match="at most 20 values"):
+        build_url(None, None, None, {"options": list(range(21))}, "relevance", 1)
+    url = build_url(None, None, None, {"fuel": ["benzine"] * 5000}, "relevance", 1)
+    assert "brnst=BENZINE&" in url

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import statistics
 from collections import Counter, OrderedDict
 from typing import Annotated, Any
@@ -30,6 +31,10 @@ mcp = FastMCP(
         "retrieval. Offer URLs are for the user to open; never fetch them yourself."
     ),
 )
+
+# httpx logt elke URL op INFO, inclusief zoektermen en postcode; die horen niet in de
+# logbestanden van de MCP-client (S-05).
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 _client = GaspedaalClient()
 # Advertenties die deze sessie zijn teruggegeven, voor get_listing (LRU, max 5.000).
