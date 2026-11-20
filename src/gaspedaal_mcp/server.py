@@ -11,7 +11,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-from . import parse
+from . import __version__, parse, serve
 from .client import GaspedaalClient
 from .params import BASE_URL, SORT_MAP, build_url
 
@@ -208,8 +208,15 @@ async def market_summary(
     return summarize(listings, total)
 
 
-def main() -> None:
-    mcp.run()
+def main(argv: list[str] | None = None) -> None:
+    """stdio (standaard) of, met ``--http``, streamable HTTP op 127.0.0.1 (zie serve.py)."""
+    args = serve.parse_args(argv)
+    # FastMCP heeft geen versie-argument; zonder dit meldt de server de versie van de SDK.
+    mcp._mcp_server.version = __version__
+    if args.http:
+        serve.run_http(mcp, args)
+    else:
+        mcp.run()
 
 
 if __name__ == "__main__":

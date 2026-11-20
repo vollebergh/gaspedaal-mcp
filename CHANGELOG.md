@@ -4,6 +4,23 @@ Alle noemenswaardige wijzigingen worden in dit bestand gedocumenteerd,
 volgens [Keep a Changelog](https://keepachangelog.com/) en SemVer (één bron:
 `version` in `pyproject.toml`).
 
+## [0.2.0] - 2026-11-20
+
+### Toegevoegd
+- Optionele HTTP-modus (`gaspedaal-mcp --http`) voor clients die alleen externe
+  servers kennen, zoals ChatGPT: alleen op 127.0.0.1, geheim pad `/<token>/mcp`
+  (`GASPEDAAL_MCP_HTTP_TOKEN`), Host-allowlist via `--public-host`, Origin alleen
+  localhost, hoogstens 32 sessies en 64 kB per verzoek, geen toegangslog.
+- `--help`; de server meldt zijn eigen versie in plaats van die van de SDK.
+
+### Gewijzigd (sinds 0.1.0, uit de code- en security review)
+- Cachesleutel bevat de versie; een gedeelde of andermans cachemap wordt geweigerd.
+- Tekstvelden ≤ 200 tekens; offer-URL's alleen naar de doorverwijzer van Gaspedaal.
+- Grenzen: deadline 60 s per verzoek, 5 redirects, lijsten ≤ 20 waarden,
+  getallen ≤ 10.000.000. Geen zoek-URL's (met postcode) meer in de logs.
+- README: installatie voor elke client, en het hoofdstuk *Voor taalmodellen*
+  (vervangt `llms.txt`).
+
 ## [0.1.0] - 2026-11-19
 
 ### Toegevoegd
