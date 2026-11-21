@@ -24,7 +24,7 @@ Voorbeeldvragen aan het model:
 
 ## Installeren
 
-De server is een gewoon programma dat standaard via **stdio** met een MCP-client praat: de client start het als subproces. Er is geen poort, geen netwerkdienst en geen API-sleutel nodig. Voor clients die alleen externe servers kennen, zoals ChatGPT, is er een optionele [HTTP-modus](#chatgpt-en-andere-clients-die-alleen-externe-servers-kennen). Je hebt [uv](https://docs.astral.sh/uv/) nodig (of pip, zie [Zonder uvx](#zonder-uvx)). De repository is privé: installeren via `git+ssh` werkt alleen met een SSH-sleutel die toegang heeft.
+De server is een gewoon programma dat standaard via **stdio** met een MCP-client praat: de client start het als subproces. Er is geen poort, geen netwerkdienst en geen API-sleutel nodig. Voor clients die alleen externe servers kennen, zoals ChatGPT, is er een optionele [HTTP-modus](#chatgpt-en-andere-clients-die-alleen-externe-servers-kennen). Je hebt [uv](https://docs.astral.sh/uv/) nodig (of pip, zie [Zonder uvx](#zonder-uvx)).
 
 Wat elke client nodig heeft:
 
@@ -32,7 +32,7 @@ Wat elke client nodig heeft:
 |---|---|
 | Transport | stdio (lokaal proces) |
 | Commando | `uvx` |
-| Argumenten | `--exclude-newer`, `7 days`, `--from`, `git+ssh://git@github.com/vollebergh/gaspedaal-mcp@v0.2.0`, `gaspedaal-mcp` |
+| Argumenten | `--exclude-newer`, `7 days`, `--from`, `git+https://github.com/vollebergh/gaspedaal-mcp@v0.2.0`, `gaspedaal-mcp` |
 | Omgevingsvariabelen (optioneel) | `GASPEDAAL_MCP_CACHE_MB`, `GASPEDAAL_MCP_CACHE_DIR`, `GASPEDAAL_MCP_CACHE_DAYS`, zie [Hoe het werkt](#hoe-het-werkt); voor de HTTP-modus zie [ChatGPT](#chatgpt-en-andere-clients-die-alleen-externe-servers-kennen) |
 
 `uvx` negeert `uv.lock` en installeert de actuele versies van de afhankelijkheden. `--exclude-newer "7 days"` slaat alleen versies over die in de afgelopen week zijn uitgebracht: de pakketten blijven actueel, maar een kwaadaardige release (die meestal binnen enkele dagen wordt ontdekt en ingetrokken) komt er niet direct in.
@@ -42,13 +42,13 @@ De clients hieronder gebruiken allemaal deze gegevens, alleen de configuratie zi
 ### Claude Code
 
 ```bash
-claude mcp add --scope user gaspedaal -- uvx --exclude-newer "7 days" --from git+ssh://git@github.com/vollebergh/gaspedaal-mcp@v0.2.0 gaspedaal-mcp
+claude mcp add --scope user gaspedaal -- uvx --exclude-newer "7 days" --from git+https://github.com/vollebergh/gaspedaal-mcp@v0.2.0 gaspedaal-mcp
 ```
 
 `--scope user` maakt hem beschikbaar in al je projecten; zonder de optie geldt hij alleen voor de huidige map. Instellingen geef je mee met `-e`:
 
 ```bash
-claude mcp add --scope user gaspedaal -e GASPEDAAL_MCP_CACHE_MB=0 -- uvx --exclude-newer "7 days" --from git+ssh://git@github.com/vollebergh/gaspedaal-mcp@v0.2.0 gaspedaal-mcp
+claude mcp add --scope user gaspedaal -e GASPEDAAL_MCP_CACHE_MB=0 -- uvx --exclude-newer "7 days" --from git+https://github.com/vollebergh/gaspedaal-mcp@v0.2.0 gaspedaal-mcp
 ```
 
 ```bash
@@ -65,7 +65,7 @@ Veel clients lezen een JSON-bestand met een `mcpServers`-object (Claude Desktop:
   "mcpServers": {
     "gaspedaal": {
       "command": "uvx",
-      "args": ["--exclude-newer", "7 days", "--from", "git+ssh://git@github.com/vollebergh/gaspedaal-mcp@v0.2.0", "gaspedaal-mcp"],
+      "args": ["--exclude-newer", "7 days", "--from", "git+https://github.com/vollebergh/gaspedaal-mcp@v0.2.0", "gaspedaal-mcp"],
       "env": { "GASPEDAAL_MCP_CACHE_MB": "200" }
     }
   }
@@ -84,7 +84,7 @@ VS Code gebruikt de sleutel `servers` en vraagt om een `type` (in `.vscode/mcp.j
     "gaspedaal": {
       "type": "stdio",
       "command": "uvx",
-      "args": ["--exclude-newer", "7 days", "--from", "git+ssh://git@github.com/vollebergh/gaspedaal-mcp@v0.2.0", "gaspedaal-mcp"]
+      "args": ["--exclude-newer", "7 days", "--from", "git+https://github.com/vollebergh/gaspedaal-mcp@v0.2.0", "gaspedaal-mcp"]
     }
   }
 }
@@ -101,7 +101,7 @@ In `opencode.json` (of `.jsonc`) onder `mcp`; het commando is hier één lijst:
   "mcp": {
     "gaspedaal": {
       "type": "local",
-      "command": ["uvx", "--exclude-newer", "7 days", "--from", "git+ssh://git@github.com/vollebergh/gaspedaal-mcp@v0.2.0", "gaspedaal-mcp"],
+      "command": ["uvx", "--exclude-newer", "7 days", "--from", "git+https://github.com/vollebergh/gaspedaal-mcp@v0.2.0", "gaspedaal-mcp"],
       "environment": { "GASPEDAAL_MCP_CACHE_MB": "200" },
       "enabled": true
     }
@@ -124,7 +124,7 @@ ChatGPT (developer mode, eigen connector) en vergelijkbare webclients starten ge
 2. Start de server met dat token en de hostnaam van je tunnel:
 
    ```bash
-   GASPEDAAL_MCP_HTTP_TOKEN=<token> uvx --exclude-newer "7 days" --from git+ssh://git@github.com/vollebergh/gaspedaal-mcp@v0.2.0 gaspedaal-mcp --http --public-host mcp.example.com
+   GASPEDAAL_MCP_HTTP_TOKEN=<token> uvx --exclude-newer "7 days" --from git+https://github.com/vollebergh/gaspedaal-mcp@v0.2.0 gaspedaal-mcp --http --public-host mcp.example.com
    ```
 
 3. Laat je tunnel of proxy `https://mcp.example.com` doorsturen naar `http://127.0.0.1:8000`.
@@ -280,3 +280,7 @@ Een kloon als MCP gebruiken, bijvoorbeeld om aan de code te werken:
 ```bash
 claude mcp add gaspedaal-dev -- uv run --project /pad/naar/gaspedaal-mcp gaspedaal-mcp
 ```
+
+## Licentie
+
+De code valt onder [MIT-0](LICENSE): iedereen mag hem gebruiken, aanpassen en verspreiden, ook zonder naamsvermelding. Dat geldt alleen voor deze code. De advertenties en andere gegevens die de server bij Gaspedaal ophaalt, zijn van Gaspedaal/AutoScout24 en de aangesloten autosites, en vallen onder hun [voorwaarden](https://www.gaspedaal.nl/blog/over-gaspedaal/wie-zijn-wij/159-auteursrechten); zie ook de waarschuwing bovenaan.

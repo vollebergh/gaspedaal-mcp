@@ -1,7 +1,7 @@
 """Live-tests tegen www.gaspedaal.nl (marker ``live``, standaard uit).
 
 Elk maakt hoogstens 2 verzoeken. Deze tests documenteren de onbevestigde
-parameters; de uitkomst wordt in llms.txt vastgelegd.
+parameters; de uitkomst staat in de README (hoofdstuk *Voor taalmodellen*).
 """
 
 from __future__ import annotations

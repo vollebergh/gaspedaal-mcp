@@ -1,19 +1,36 @@
 [project]
 name = "gaspedaal-mcp"
 version = "0.2.0"
-description = "Lokale MCP-server die het occasion-aanbod van www.gaspedaal.nl doorzoekbaar maakt voor een taalmodel"
+description = "Unofficial MCP server for the used-car listings of Gaspedaal.nl (personal, non-commercial use)"
 readme = "README.md"
 requires-python = ">=3.12"
+license = "MIT-0"
+license-files = ["LICENSE"]
+authors = [{ name = "vollebergh" }]
+keywords = ["mcp", "model-context-protocol", "gaspedaal", "used-cars", "occasions", "netherlands"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 dependencies = [
     "mcp>=1.20,<2",
     "httpx>=0.28,<1",
 ]
 
+[project.urls]
+Repository = "https://github.com/vollebergh/gaspedaal-mcp"
+Changelog = "https://github.com/vollebergh/gaspedaal-mcp/blob/main/CHANGELOG.md"
+
 [project.scripts]
 gaspedaal-mcp = "gaspedaal_mcp.server:main"
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]

@@ -12,6 +12,7 @@ volgens [Keep a Changelog](https://keepachangelog.com/) en SemVer (één bron:
   (`GASPEDAAL_MCP_HTTP_TOKEN`), Host-allowlist via `--public-host`, Origin alleen
   localhost, hoogstens 32 sessies en 64 kB per verzoek, geen toegangslog.
 - `--help`; de server meldt zijn eigen versie in plaats van die van de SDK.
+- Licentie MIT-0 (`LICENSE`) en pakketgegevens (auteur, trefwoorden, URL's).
 
 ### Gewijzigd (sinds 0.1.0, uit de code- en security review)
 - Cachesleutel bevat de versie; een gedeelde of andermans cachemap wordt geweigerd.
