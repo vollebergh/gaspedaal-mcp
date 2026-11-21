@@ -13,7 +13,7 @@ from pydantic import Field
 
 from . import __version__, parse, serve
 from .client import GaspedaalClient
-from .params import BASE_URL, SORT_MAP, build_url
+from .params import BASE_URL, SORT_MAP, build_url, normalize_slug
 
 TTL_SEARCH = 3600
 TTL_LISTS = 7 * 86400
@@ -62,6 +62,7 @@ def _remember(listings: list[dict[str, Any]]) -> None:
 async def _search_page(
     brand: str | None, model: str | None, keyword: str | None, filters: Any, sort: str, page: int
 ) -> tuple[str, dict[str, Any]]:
+    brand, model = normalize_slug(brand), normalize_slug(model)
     url = build_url(brand, model, keyword, filters, sort, page)
     parser = parse.checked(parse.parse_all, brand, model)
     return url, await _client.get_parsed(url, TTL_SEARCH, parser, namespace="search")
@@ -83,6 +84,7 @@ async def list_models(
     brand: Annotated[str, Field(description="Brand slug from list_brands")],
 ) -> list[dict[str, Any]]:
     """List all models of a brand with slug, name and listing count."""
+    brand = normalize_slug(brand)
     url = build_url(brand, None, None, None, "relevance", 1)
     parser = parse.checked(lambda html: {"models": parse.list_models_from_page(html)}, brand, None)
     data = await _client.get_parsed(url, TTL_LISTS, parser, namespace="models")
@@ -96,6 +98,7 @@ async def list_filters(brand: Brand = None, model: Model = None) -> dict[str, An
 
     Ranges accept arbitrary numbers, not only the listed steps.
     """
+    brand, model = normalize_slug(brand), normalize_slug(model)
     url = build_url(brand, model, None, None, "relevance", 1)
     parser = parse.checked(parse.parse_list_filters, brand, model)
     data = await _client.get_parsed(url, TTL_LISTS, parser, namespace="filters")

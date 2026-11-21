@@ -4,6 +4,17 @@ Alle noemenswaardige wijzigingen worden in dit bestand gedocumenteerd,
 volgens [Keep a Changelog](https://keepachangelog.com/) en SemVer (één bron:
 `version` in `pyproject.toml`).
 
+## [0.2.2] - 2026-11-21
+
+### Gewijzigd
+- Merk- en model-slugs zijn hoofdletterongevoelig (`Toyota` → `toyota`).
+- `transmission` accepteert ook `HANDMATIG`, de waarde die in de advertenties
+  staat; die wordt `HANDGESCHAKELD`.
+- README (*Voor taalmodellen*): varianten als Mini `cabrio` zijn eigen modellen;
+  het trefwoord zoekt los op woorden; let op schadeauto's, onderdelen en
+  plaatsvulprijzen bij sorteren op prijs; `empty_weight` en `engine_cc` zijn
+  live bevestigd; optie-id's mogen tekst of getal zijn.
+
 ## [0.2.1] - 2026-11-21
 
 ### Opgelost

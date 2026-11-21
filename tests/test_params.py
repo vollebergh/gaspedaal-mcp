@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from gaspedaal_mcp.params import ValidationError, build_url
+from gaspedaal_mcp.params import ValidationError, build_url, normalize_slug
 
 
 def test_example_1_toyota_rav4():
@@ -154,3 +154,14 @@ def test_long_lists_rejected_and_duplicates_removed():
         build_url(None, None, None, {"options": list(range(21))}, "relevance", 1)
     url = build_url(None, None, None, {"fuel": ["benzine"] * 5000}, "relevance", 1)
     assert "brnst=BENZINE&" in url
+
+
+@pytest.mark.parametrize("value", ["handmatig", "HANDGESCHAKELD", ["Handmatig", "handgeschakeld"]])
+def test_transmission_handmatig_alias(value):
+    url = build_url(None, None, None, {"transmission": value}, "relevance", 1)
+    assert "trns=HANDGESCHAKELD" in url
+
+
+def test_normalize_slug():
+    assert normalize_slug(" Land-Rover ") == "land-rover"
+    assert normalize_slug(None) is None

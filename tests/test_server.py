@@ -183,3 +183,21 @@ async def test_unknown_slugs_rejected_by_every_tool(monkeypatch):
     with pytest.raises(ValueError, match="Unknown model 'rav5'"):
         await server.search(brand="toyota", model="rav5")
     assert (await server.search(brand="toyota", model="rav4"))["returned"] == 1
+
+
+async def test_slugs_case_insensitive(monkeypatch):
+    seen = []
+
+    class _Recorder(_FakeClient):
+        async def get_parsed(self, url, ttl_seconds, parser, namespace=""):
+            seen.append(url)
+            return parser(self.html)
+
+    catalog = {"merkModel": [{"slug": "toyota", "models": [{"slug": "rav4"}]}]}
+    monkeypatch.setattr(server, "_client", _Recorder(make_page(make_occasions_payload(filters=catalog))))
+    monkeypatch.setattr(server, "_memory", OrderedDict())
+    await server.search(brand="Toyota", model=" RAV4")
+    await server.list_models("TOYOTA")
+    await server.list_filters("Toyota", "Rav4")
+    assert all("/toyota" in url and "Toyota" not in url for url in seen)
+    assert "/toyota/rav4?" in seen[0]

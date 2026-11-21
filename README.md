@@ -32,7 +32,7 @@ Wat elke client nodig heeft:
 |---|---|
 | Transport | stdio (lokaal proces) |
 | Commando | `uvx` |
-| Argumenten | `--exclude-newer`, `7 days`, `--from`, `git+https://github.com/vollebergh/gaspedaal-mcp@v0.2.1`, `gaspedaal-mcp` |
+| Argumenten | `--exclude-newer`, `7 days`, `--from`, `git+https://github.com/vollebergh/gaspedaal-mcp@v0.2.2`, `gaspedaal-mcp` |
 | Omgevingsvariabelen (optioneel) | `GASPEDAAL_MCP_CACHE_MB`, `GASPEDAAL_MCP_CACHE_DIR`, `GASPEDAAL_MCP_CACHE_DAYS`, zie [Hoe het werkt](#hoe-het-werkt); voor de HTTP-modus zie [ChatGPT](#chatgpt-en-andere-clients-die-alleen-externe-servers-kennen) |
 
 `uvx` negeert `uv.lock` en installeert de actuele versies van de afhankelijkheden. `--exclude-newer "7 days"` slaat alleen versies over die in de afgelopen week zijn uitgebracht: de pakketten blijven actueel, maar een kwaadaardige release (die meestal binnen enkele dagen wordt ontdekt en ingetrokken) komt er niet direct in.
@@ -42,13 +42,13 @@ De clients hieronder gebruiken allemaal deze gegevens, alleen de configuratie zi
 ### Claude Code
 
 ```bash
-claude mcp add --scope user gaspedaal -- uvx --exclude-newer "7 days" --from git+https://github.com/vollebergh/gaspedaal-mcp@v0.2.1 gaspedaal-mcp
+claude mcp add --scope user gaspedaal -- uvx --exclude-newer "7 days" --from git+https://github.com/vollebergh/gaspedaal-mcp@v0.2.2 gaspedaal-mcp
 ```
 
 `--scope user` maakt hem beschikbaar in al je projecten; zonder de optie geldt hij alleen voor de huidige map. Instellingen geef je mee met `-e`:
 
 ```bash
-claude mcp add --scope user gaspedaal -e GASPEDAAL_MCP_CACHE_MB=0 -- uvx --exclude-newer "7 days" --from git+https://github.com/vollebergh/gaspedaal-mcp@v0.2.1 gaspedaal-mcp
+claude mcp add --scope user gaspedaal -e GASPEDAAL_MCP_CACHE_MB=0 -- uvx --exclude-newer "7 days" --from git+https://github.com/vollebergh/gaspedaal-mcp@v0.2.2 gaspedaal-mcp
 ```
 
 ```bash
@@ -65,7 +65,7 @@ Veel clients lezen een JSON-bestand met een `mcpServers`-object (Claude Desktop:
   "mcpServers": {
     "gaspedaal": {
       "command": "uvx",
-      "args": ["--exclude-newer", "7 days", "--from", "git+https://github.com/vollebergh/gaspedaal-mcp@v0.2.1", "gaspedaal-mcp"],
+      "args": ["--exclude-newer", "7 days", "--from", "git+https://github.com/vollebergh/gaspedaal-mcp@v0.2.2", "gaspedaal-mcp"],
       "env": { "GASPEDAAL_MCP_CACHE_MB": "200" }
     }
   }
@@ -84,7 +84,7 @@ VS Code gebruikt de sleutel `servers` en vraagt om een `type` (in `.vscode/mcp.j
     "gaspedaal": {
       "type": "stdio",
       "command": "uvx",
-      "args": ["--exclude-newer", "7 days", "--from", "git+https://github.com/vollebergh/gaspedaal-mcp@v0.2.1", "gaspedaal-mcp"]
+      "args": ["--exclude-newer", "7 days", "--from", "git+https://github.com/vollebergh/gaspedaal-mcp@v0.2.2", "gaspedaal-mcp"]
     }
   }
 }
@@ -101,7 +101,7 @@ In `opencode.json` (of `.jsonc`) onder `mcp`; het commando is hier één lijst:
   "mcp": {
     "gaspedaal": {
       "type": "local",
-      "command": ["uvx", "--exclude-newer", "7 days", "--from", "git+https://github.com/vollebergh/gaspedaal-mcp@v0.2.1", "gaspedaal-mcp"],
+      "command": ["uvx", "--exclude-newer", "7 days", "--from", "git+https://github.com/vollebergh/gaspedaal-mcp@v0.2.2", "gaspedaal-mcp"],
       "environment": { "GASPEDAAL_MCP_CACHE_MB": "200" },
       "enabled": true
     }
@@ -124,7 +124,7 @@ ChatGPT (developer mode, eigen connector) en vergelijkbare webclients starten ge
 2. Start de server met dat token en de hostnaam van je tunnel:
 
    ```bash
-   GASPEDAAL_MCP_HTTP_TOKEN=<token> uvx --exclude-newer "7 days" --from git+https://github.com/vollebergh/gaspedaal-mcp@v0.2.1 gaspedaal-mcp --http --public-host mcp.example.com
+   GASPEDAAL_MCP_HTTP_TOKEN=<token> uvx --exclude-newer "7 days" --from git+https://github.com/vollebergh/gaspedaal-mcp@v0.2.2 gaspedaal-mcp --http --public-host mcp.example.com
    ```
 
 3. Laat je tunnel of proxy `https://mcp.example.com` doorsturen naar `http://127.0.0.1:8000`.
@@ -143,7 +143,7 @@ Let op:
 Uit een gebouwde wheel (zie [Ontwikkelen](#ontwikkelen)) of een kloon van de repo:
 
 ```bash
-pip install builds/gaspedaal_mcp-0.2.1-py3-none-any.whl   # of: pip install .
+pip install builds/gaspedaal_mcp-0.2.2-py3-none-any.whl   # of: pip install .
 gaspedaal-mcp                                              # start de stdio-server
 ```
 
@@ -164,7 +164,8 @@ Antwoord in de taal van de gebruiker en zeg dat het actuele advertenties via Gas
 
 ### Vaste werkwijzen
 
-1. **Slug onbekend:** `list_brands()` → `list_models("toyota")`. Slugs zijn kleine letters met streepjes (`alfa-romeo`, `mercedes-benz`, `rav4`).
+1. **Slug onbekend:** `list_brands()` → `list_models("toyota")`. Slugs zijn kleine letters met streepjes (`alfa-romeo`, `mercedes-benz`, `rav4`); hoofdletters zet de server zelf om. Een onbekend merk of model geeft een foutmelding.
+   **Varianten zijn vaak eigen modellen:** Mini heeft naast `cooper` ook `cabrio` en `cooper-s`, Volkswagen naast `golf` ook `golf-plus` en `golf-sportsvan`. Kijk in `list_models` of de variant die de gebruiker noemt een eigen model is, en zoek dan op dat model in plaats van op carrosserie of trefwoord.
 2. **Zoeken:** `list_filters(brand, model)` voor waarden en aantallen → `search(brand, model, filters={...}, sort=...)`.
 3. **Details:** `get_listing(id)` met een `id` uit een eerdere `search` (doet geen netwerkverzoek).
 4. **Prijsbeeld:** `market_summary(brand, model, filters={...}, max_pages=3)`. Dit is een steekproef van de eerste pagina's in relevantievolgorde, niet de hele markt; `note` zegt dat ook.
@@ -174,13 +175,14 @@ Antwoord in de taal van de gebruiker en zeg dat het actuele advertenties via Gas
 - Een pagina bevat **100 advertenties** en duurt 1–3 seconden. `search` geeft er standaard 25 terug (`max_results` 1–100); `truncated` zegt of er op die pagina meer stonden. `page` (1–50) bladert verder.
 - Geef `brand` en liefst `model`, plus filters. Kijk naar `total` en `pages` voordat je verder bladert.
 - De standaardsortering `relevance` is **niet** "goedkoopste eerst". Gebruik `price_asc`.
+- Bij `price_asc` staan bovenaan vaak schadeauto's, opknappers en soms onderdelen (een set velgen); bij `price_desc` soms plaatsvulprijzen als € 999.999. Kijk naar `version`, `year` en `mileage_km` voordat je iets "de goedkoopste" of "de duurste" noemt.
 
 ### Zoekparameters
 
 | Parameter | Waarde |
 |---|---|
 | `brand`, `model` | slugs uit `list_brands` en `list_models`; `model` vraagt een `brand` |
-| `keyword` | vrije tekst, hoogstens 100 tekens (`"trekhaak"`) |
+| `keyword` | vrije tekst, hoogstens 100 tekens (`"trekhaak"`). Gaspedaal zoekt los op de woorden: één kenmerkend woord werkt, een zin of combinatie (`"M-sport & pano"`) filtert nauwelijks |
 | `filters` | object met filtersleutel → waarde, zie hieronder |
 | `sort` | `relevance` (standaard), `distance` (vraagt `postcode`), `price_asc`, `price_desc`, `mileage_asc`, `mileage_desc`, `year_asc`, `year_desc`, `newest` |
 | `page` | 1–50 |
@@ -203,14 +205,14 @@ Bereiken zijn `{"min": x, "max": y}` (ieder deel optioneel); elk getal werkt, ni
 | `power` | vermogen | bereik (de site toont pk; de eenheid is niet bevestigd) |
 | `seats` | zitplaatsen | bereik 1–9 |
 | `towing_weight` | trekgewicht (kg) | bereik |
-| `empty_weight` | ledig gewicht (kg) | bereik (niet live bevestigd) |
-| `engine_cc` | motorinhoud (cc) | bereik (niet live bevestigd) |
+| `empty_weight` | ledig gewicht (kg) | bereik |
+| `engine_cc` | motorinhoud (cc) | bereik |
 | `fuel` | brandstof | `BENZINE`, `DIESEL`, `HYBRIDE`, `ELEKTRICITEIT`, `LPG`, `AARDGAS`, `WATERSTOF` |
-| `transmission` | transmissie | `AUTOMATISCH`, `HANDGESCHAKELD` (één waarde) |
+| `transmission` | transmissie | `AUTOMATISCH`, `HANDGESCHAKELD` (één waarde); `HANDMATIG`, zoals in de advertenties, mag ook |
 | `body` | carrosserie | `HATCHBACK`, `STATIONWAGEN`, `MPV`, `SEDAN`, `SUV`, `PICK_UP`, `COUPE`, `CABRIOLET`, `BEDRIJFSWAGEN`, `CAMPER` |
 | `color` | kleur | `BEIGE`, `BLAUW`, `BRUIN`, `GEEL`, `GOUD`, `GRIJS`, `GROEN`, `ORANJE`, `PAARS`, `ROOD`, `WIT`, `ZILVER`, `ZWART` |
 | `doors` | deuren | 2–6 |
-| `options` | uitrusting | numerieke id's uit `list_filters` (bv. `421` = 4x4) |
+| `options` | uitrusting | id's uit `list_filters`, als tekst of getal (bv. `421` = 4x4, `48` = trekhaak) |
 | `seller` | aanbieder | `UNIVERSEEL_AUTOBEDRIJF`, `PARTICULIER` (één waarde) |
 | `warranty` | garantie | `BOVAG`, `MERKGARANTIE` |
 | `nap` | Nationale Auto Pas | `true` |

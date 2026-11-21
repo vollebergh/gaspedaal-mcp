@@ -44,6 +44,10 @@ _ENUMS: dict[str, tuple[str, list[str], bool]] = {
     "warranty": ("grn", ["BOVAG", "MERKGARANTIE"], True),
 }
 
+# Synoniemen per enum-filter: de advertenties zelf zeggen `HANDMATIG`, het filter van de site
+# heet `HANDGESCHAKELD`. Zo werkt een waarde die een model uit de uitvoer overneemt ook als filter.
+_ALIASES: dict[str, dict[str, str]] = {"transmission": {"HANDMATIG": "HANDGESCHAKELD"}}
+
 # Filters met een vaste set getallen: toolsleutel -> (param, toegestane waarden).
 _CHOICES: dict[str, tuple[str, list[int]]] = {
     "days_listed": ("dagen", [1, 3, 5, 7, 14, 21, 28]),
@@ -89,6 +93,11 @@ MAX_VALUES = 20
 
 class ValidationError(ValueError):
     """Korte foutmelding voor de gebruiker."""
+
+
+def normalize_slug(slug: str | None) -> str | None:
+    """``" Toyota "`` → ``"toyota"``; de rest van de controle doet :func:`build_url`."""
+    return slug.strip().lower() if isinstance(slug, str) else slug
 
 
 def _as_list(value: Any, key: str) -> list[str]:
@@ -179,7 +188,9 @@ def build_url(
     for key, (param, allowed, multi) in _ENUMS.items():
         if key not in filters:
             continue
-        values = [v.strip().upper() for v in _as_list(filters[key], key)]
+        aliases = _ALIASES.get(key, {})
+        upper = (v.strip().upper() for v in _as_list(filters[key], key))
+        values = list(dict.fromkeys(aliases.get(v, v) for v in upper))
         if not multi and len(values) != 1:
             raise ValidationError(f"{key}: takes a single value")
         for v in values:
