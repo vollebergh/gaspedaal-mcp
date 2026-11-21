@@ -251,3 +251,30 @@ def test_list_texts_are_clipped():
     html = make_page(payload)
     assert len(parse.list_brands_from_page(html)[0]["name"]) == parse.MAX_TEXT
     assert len(parse.parse_list_filters(html)["fuel"]["values"][0]["label"]) == parse.MAX_TEXT
+
+
+_CATALOG = {"merkModel": [{"slug": "toyota", "models": [{"slug": "rav4"}, {"slug": "yaris"}]}]}
+
+
+@pytest.mark.parametrize(
+    ("brand", "model", "error"),
+    [
+        (None, None, None),
+        ("toyota", None, None),
+        ("toyota", "rav4", None),
+        ("tesler", None, "Unknown brand 'tesler'"),
+        ("toyota", "rav5", "Unknown model 'rav5' for brand 'toyota'"),
+    ],
+)
+def test_check_slugs(brand, model, error):
+    page = parse.PageData(make_page(make_occasions_payload(filters=_CATALOG)))
+    if error is None:
+        parse.check_slugs(page, brand, model)
+    else:
+        with pytest.raises(ValueError, match=error):
+            parse.check_slugs(page, brand, model)
+
+
+def test_check_slugs_skipped_without_catalog():
+    page = parse.PageData(make_page(make_occasions_payload()))
+    parse.check_slugs(page, "tesler", "x")  # geen catalogus: niet blokkeren

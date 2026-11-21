@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from typing import Any
 from urllib.parse import urljoin
 
@@ -114,6 +115,38 @@ class PageData:
         if not isinstance(items, list):
             return []
         return [i for i in items if isinstance(i, dict) and not i.get("isGroupHeader")]
+
+
+def check_slugs(page: PageData, brand: str | None, model: str | None) -> None:
+    """``ValueError`` als ``brand``/``model`` niet in de merk/model-catalogus van de pagina staan.
+
+    Met een querystring geeft de site bij een onbekende slug geen 404, maar valt ze stil terug
+    op een bredere zoekopdracht (alle merken, of alle modellen van het merk). Elke zoekpagina
+    bevat de volledige catalogus in ``filters.merkModel``; ontbreekt die, dan controleren we niet.
+    """
+    catalog = page.filters.get("merkModel")
+    if brand is None or not isinstance(catalog, list):
+        return
+    entry = next((b for b in catalog if isinstance(b, dict) and b.get("slug") == brand), None)
+    if entry is None:
+        raise ValueError(f"Unknown brand '{brand}'; use list_brands")
+    models = entry.get("models")
+    if model is not None and not any(
+        isinstance(m, dict) and m.get("slug") == model for m in (models if isinstance(models, list) else [])
+    ):
+        raise ValueError(f"Unknown model '{model}' for brand '{brand}'; use list_models")
+
+
+def checked(
+    parser: Callable[[str], dict[str, Any]], brand: str | None, model: str | None
+) -> Callable[[str], dict[str, Any]]:
+    """``parser`` met vooraf :func:`check_slugs`; een fout komt zo ook niet in de cache."""
+
+    def run(html: str) -> dict[str, Any]:
+        check_slugs(PageData(html), brand, model)
+        return parser(html)
+
+    return run
 
 
 def _dict(value: Any) -> dict[str, Any]:

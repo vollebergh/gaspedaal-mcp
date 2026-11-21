@@ -1,6 +1,6 @@
 [project]
 name = "gaspedaal-mcp"
-version = "0.2.0"
+version = "0.2.1"
 description = "Unofficial MCP server for the used-car listings of Gaspedaal.nl (personal, non-commercial use)"
 readme = "README.md"
 requires-python = ">=3.12"

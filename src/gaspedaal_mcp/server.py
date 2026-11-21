@@ -63,7 +63,8 @@ async def _search_page(
     brand: str | None, model: str | None, keyword: str | None, filters: Any, sort: str, page: int
 ) -> tuple[str, dict[str, Any]]:
     url = build_url(brand, model, keyword, filters, sort, page)
-    return url, await _client.get_parsed(url, TTL_SEARCH, parse.parse_all, namespace="search")
+    parser = parse.checked(parse.parse_all, brand, model)
+    return url, await _client.get_parsed(url, TTL_SEARCH, parser, namespace="search")
 
 
 @mcp.tool(annotations=_TOOL)
@@ -83,9 +84,8 @@ async def list_models(
 ) -> list[dict[str, Any]]:
     """List all models of a brand with slug, name and listing count."""
     url = build_url(brand, None, None, None, "relevance", 1)
-    data = await _client.get_parsed(
-        url, TTL_LISTS, lambda html: {"models": parse.list_models_from_page(html)}, namespace="models"
-    )
+    parser = parse.checked(lambda html: {"models": parse.list_models_from_page(html)}, brand, None)
+    data = await _client.get_parsed(url, TTL_LISTS, parser, namespace="models")
     models: list[dict[str, Any]] = data["models"]
     return models
 
@@ -97,7 +97,8 @@ async def list_filters(brand: Brand = None, model: Model = None) -> dict[str, An
     Ranges accept arbitrary numbers, not only the listed steps.
     """
     url = build_url(brand, model, None, None, "relevance", 1)
-    data = await _client.get_parsed(url, TTL_LISTS, parse.parse_list_filters, namespace="filters")
+    parser = parse.checked(parse.parse_list_filters, brand, model)
+    data = await _client.get_parsed(url, TTL_LISTS, parser, namespace="filters")
     return {**data, "sort_options": list(SORT_MAP)}
 
 

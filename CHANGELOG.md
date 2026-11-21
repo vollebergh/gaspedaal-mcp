@@ -4,6 +4,17 @@ Alle noemenswaardige wijzigingen worden in dit bestand gedocumenteerd,
 volgens [Keep a Changelog](https://keepachangelog.com/) en SemVer (één bron:
 `version` in `pyproject.toml`).
 
+## [0.2.1] - 2026-11-21
+
+### Opgelost
+- Een onbekend merk of model gaf geen foutmelding: met een querystring valt de site
+  stil terug op alle merken (of alle modellen van het merk), zodat `search` en
+  `market_summary` advertenties van de verkeerde auto's teruggaven, `list_models`
+  een lege lijst en `list_filters` de filters van het hele aanbod. De server
+  controleert merk en model nu tegen de catalogus in elke zoekpagina
+  (`filters.merkModel`), zonder extra verzoek, en weigert met
+  `Unknown brand 'x'` of `Unknown model 'x' for brand 'y'`.
+
 ## [0.2.0] - 2026-11-20
 
 ### Toegevoegd

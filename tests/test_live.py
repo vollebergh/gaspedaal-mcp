@@ -58,3 +58,25 @@ async def test_unconfirmed_param_recognized():
     assert filtered_total is not None
     # Een strikte daling bewijst dat de site ``tmin`` daadwerkelijk herkent.
     assert filtered_total < base_total
+
+
+async def test_catalog_covers_brands_and_models():
+    """De catalogus (``merkModel``) dekt alle merken en modellen die de site als facet toont."""
+    from gaspedaal_mcp import parse
+
+    client = GaspedaalClient()
+    try:
+        page = parse.PageData(await client.get_html("https://www.gaspedaal.nl/toyota?srt=df-a"))
+        unknown_page = parse.PageData(await client.get_html("https://www.gaspedaal.nl/tesler?srt=df-a"))
+    finally:
+        await client.close()
+    brands = [i["slug"] for i in page.facet("merken")]
+    models = [i["slug"] for i in page.facet("modellen")]
+    assert len(brands) > 100 and "rav4" in models
+    for brand in brands:
+        parse.check_slugs(page, brand, None)
+    for model in models:
+        parse.check_slugs(page, "toyota", model)
+    # De site valt bij een onbekend merk stil terug op alle merken; wij weigeren het.
+    with pytest.raises(ValueError, match="Unknown brand"):
+        parse.check_slugs(unknown_page, "tesler", None)

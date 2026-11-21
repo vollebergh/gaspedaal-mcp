@@ -167,3 +167,19 @@ def test_httpx_does_not_log_urls():
     import logging
 
     assert logging.getLogger("httpx").level == logging.WARNING
+
+
+async def test_unknown_slugs_rejected_by_every_tool(monkeypatch):
+    catalog = {"merkModel": [{"slug": "toyota", "models": [{"slug": "rav4"}]}]}
+    _patch_client(monkeypatch, make_page(make_occasions_payload(filters=catalog)))
+    for call in (
+        server.search(brand="tesler"),
+        server.market_summary(brand="tesler", max_pages=1),
+        server.list_models("tesler"),
+        server.list_filters("tesler"),
+    ):
+        with pytest.raises(ValueError, match="Unknown brand 'tesler'"):
+            await call
+    with pytest.raises(ValueError, match="Unknown model 'rav5'"):
+        await server.search(brand="toyota", model="rav5")
+    assert (await server.search(brand="toyota", model="rav4"))["returned"] == 1

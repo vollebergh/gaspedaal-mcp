@@ -32,7 +32,7 @@ Wat elke client nodig heeft:
 |---|---|
 | Transport | stdio (lokaal proces) |
 | Commando | `uvx` |
-| Argumenten | `--exclude-newer`, `7 days`, `--from`, `git+https://github.com/vollebergh/gaspedaal-mcp@v0.2.0`, `gaspedaal-mcp` |
+| Argumenten | `--exclude-newer`, `7 days`, `--from`, `git+https://github.com/vollebergh/gaspedaal-mcp@v0.2.1`, `gaspedaal-mcp` |
 | Omgevingsvariabelen (optioneel) | `GASPEDAAL_MCP_CACHE_MB`, `GASPEDAAL_MCP_CACHE_DIR`, `GASPEDAAL_MCP_CACHE_DAYS`, zie [Hoe het werkt](#hoe-het-werkt); voor de HTTP-modus zie [ChatGPT](#chatgpt-en-andere-clients-die-alleen-externe-servers-kennen) |
 
 `uvx` negeert `uv.lock` en installeert de actuele versies van de afhankelijkheden. `--exclude-newer "7 days"` slaat alleen versies over die in de afgelopen week zijn uitgebracht: de pakketten blijven actueel, maar een kwaadaardige release (die meestal binnen enkele dagen wordt ontdekt en ingetrokken) komt er niet direct in.
@@ -42,13 +42,13 @@ De clients hieronder gebruiken allemaal deze gegevens, alleen de configuratie zi
 ### Claude Code
 
 ```bash
-claude mcp add --scope user gaspedaal -- uvx --exclude-newer "7 days" --from git+https://github.com/vollebergh/gaspedaal-mcp@v0.2.0 gaspedaal-mcp
+claude mcp add --scope user gaspedaal -- uvx --exclude-newer "7 days" --from git+https://github.com/vollebergh/gaspedaal-mcp@v0.2.1 gaspedaal-mcp
 ```
 
 `--scope user` maakt hem beschikbaar in al je projecten; zonder de optie geldt hij alleen voor de huidige map. Instellingen geef je mee met `-e`:
 
 ```bash
-claude mcp add --scope user gaspedaal -e GASPEDAAL_MCP_CACHE_MB=0 -- uvx --exclude-newer "7 days" --from git+https://github.com/vollebergh/gaspedaal-mcp@v0.2.0 gaspedaal-mcp
+claude mcp add --scope user gaspedaal -e GASPEDAAL_MCP_CACHE_MB=0 -- uvx --exclude-newer "7 days" --from git+https://github.com/vollebergh/gaspedaal-mcp@v0.2.1 gaspedaal-mcp
 ```
 
 ```bash
@@ -65,7 +65,7 @@ Veel clients lezen een JSON-bestand met een `mcpServers`-object (Claude Desktop:
   "mcpServers": {
     "gaspedaal": {
       "command": "uvx",
-      "args": ["--exclude-newer", "7 days", "--from", "git+https://github.com/vollebergh/gaspedaal-mcp@v0.2.0", "gaspedaal-mcp"],
+      "args": ["--exclude-newer", "7 days", "--from", "git+https://github.com/vollebergh/gaspedaal-mcp@v0.2.1", "gaspedaal-mcp"],
       "env": { "GASPEDAAL_MCP_CACHE_MB": "200" }
     }
   }
@@ -84,7 +84,7 @@ VS Code gebruikt de sleutel `servers` en vraagt om een `type` (in `.vscode/mcp.j
     "gaspedaal": {
       "type": "stdio",
       "command": "uvx",
-      "args": ["--exclude-newer", "7 days", "--from", "git+https://github.com/vollebergh/gaspedaal-mcp@v0.2.0", "gaspedaal-mcp"]
+      "args": ["--exclude-newer", "7 days", "--from", "git+https://github.com/vollebergh/gaspedaal-mcp@v0.2.1", "gaspedaal-mcp"]
     }
   }
 }
@@ -101,7 +101,7 @@ In `opencode.json` (of `.jsonc`) onder `mcp`; het commando is hier één lijst:
   "mcp": {
     "gaspedaal": {
       "type": "local",
-      "command": ["uvx", "--exclude-newer", "7 days", "--from", "git+https://github.com/vollebergh/gaspedaal-mcp@v0.2.0", "gaspedaal-mcp"],
+      "command": ["uvx", "--exclude-newer", "7 days", "--from", "git+https://github.com/vollebergh/gaspedaal-mcp@v0.2.1", "gaspedaal-mcp"],
       "environment": { "GASPEDAAL_MCP_CACHE_MB": "200" },
       "enabled": true
     }
@@ -124,7 +124,7 @@ ChatGPT (developer mode, eigen connector) en vergelijkbare webclients starten ge
 2. Start de server met dat token en de hostnaam van je tunnel:
 
    ```bash
-   GASPEDAAL_MCP_HTTP_TOKEN=<token> uvx --exclude-newer "7 days" --from git+https://github.com/vollebergh/gaspedaal-mcp@v0.2.0 gaspedaal-mcp --http --public-host mcp.example.com
+   GASPEDAAL_MCP_HTTP_TOKEN=<token> uvx --exclude-newer "7 days" --from git+https://github.com/vollebergh/gaspedaal-mcp@v0.2.1 gaspedaal-mcp --http --public-host mcp.example.com
    ```
 
 3. Laat je tunnel of proxy `https://mcp.example.com` doorsturen naar `http://127.0.0.1:8000`.
@@ -143,7 +143,7 @@ Let op:
 Uit een gebouwde wheel (zie [Ontwikkelen](#ontwikkelen)) of een kloon van de repo:
 
 ```bash
-pip install builds/gaspedaal_mcp-0.2.0-py3-none-any.whl   # of: pip install .
+pip install builds/gaspedaal_mcp-0.2.1-py3-none-any.whl   # of: pip install .
 gaspedaal-mcp                                              # start de stdio-server
 ```
 
@@ -231,7 +231,7 @@ Voorbeelden:
 
 | Melding | Wat te doen |
 |---|---|
-| `Unknown brand or model; use list_brands / list_models` | de slug klopt niet |
+| `Unknown brand 'x'; use list_brands` / `Unknown model 'x' for brand 'y'; use list_models` | de slug klopt niet (de site zelf zou stil terugvallen op alle merken of alle modellen van het merk) |
 | `Unknown filter 'x'; call list_filters` / `Unknown value 'X' for fuel; allowed: …` | gebruik een sleutel of waarde uit de tabel of `list_filters` |
 | `model requires brand`, `price: min > max`, `sort 'distance' requires postcode`, … | de melding zegt wat er mis is |
 | `Gaspedaal asked to slow down (HTTP 429); pausing N s` en daarna `… paused for another N s` | vraag Gaspedaal zolang niets; antwoorden uit de cache werken nog. Niet in een lus opnieuw proberen |
